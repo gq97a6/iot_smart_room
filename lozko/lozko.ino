@@ -1,0 +1,306 @@
+//Strip
+#include <Adafruit_NeoPixel.h>
+Adafruit_NeoPixel strip(101, 13, NEO_GRB + NEO_KHZ800);
+
+//MQTT and WiFI
+#include <SPI.h>
+#include <WiFi.h>
+#include <ESPmDNS.h>
+#include <ArduinoOTA.h>
+#include <PubSubClient.h>
+#include <WiFiUdp.h>
+String topicStr;
+String payloadStr;
+
+//MQTT server details
+const char* MQTT_SERVER = "tailor.cloudmqtt.com";
+#define MQTT_PORT 11045
+#define MQTT_USER "derwsywl"
+#define MQTT_PASSWORD "IItmHbbnu9mD"
+
+//WiFi details
+const char* ssid = "2.4G-Vectra-WiFi-8F493A";
+const char* password = "brygida71";
+WiFiClient wifiClient;
+PubSubClient client(wifiClient);
+
+//Pins
+int heatPin = 27;
+int supplyPin = 14;
+
+//State
+int i;
+long bedColor;
+byte heatControl = 0; //Cold/Heat(0), Auto(1), Heat up(2)
+bool revertheatControl; //Revert to previous mode before heat up, Cold(0), Auto(1)
+
+//Alarms
+int heatUpFreq = 3 * 60 * 1000;
+long heatUpAlarm;
+
+int heatFreq = 3 * 60 * 1000;
+long heatAlarm;
+
+int coldFreq = 3 * 60 * 1000;
+long coldAlarm;
+
+int wifiResetFreq = 5 * 60 * 1000;
+long wifiResetAlarm;
+
+int MQTTResetFreq = 5 * 60 * 1000;
+long MQTTResetAlarm;
+
+void setup()
+{
+  strip.begin();
+  strip.show();
+  strip.setBrightness(255);
+  
+  pinMode(heatPin, OUTPUT);
+  pinMode(supplyPin, OUTPUT);
+  pinMode(2, OUTPUT);
+
+  valve(0);
+  digitalWrite(supplyPin, HIGH);
+
+  Serial.begin(115200);
+  Serial.setTimeout(30);
+
+  //MQTT
+  client.setServer(MQTT_SERVER, MQTT_PORT);
+  client.setCallback(callback);
+
+  //OTA update and WiFI
+  Serial.println("Booting");
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid, password);
+  while (WiFi.waitForConnectResult() != WL_CONNECTED)
+  {
+    Serial.println("Connection Failed! Rebooting...");
+    digitalWrite(2, HIGH);
+    delay(3000);
+    digitalWrite(2, LOW);
+
+    ESP.restart();
+  }
+
+  ArduinoOTA
+  .onStart([]()
+  {
+    String type;
+    if (ArduinoOTA.getCommand() == U_FLASH)
+      type = "sketch";
+    else // U_SPIFFS
+      type = "filesystem";
+  })
+
+  .onEnd([]()
+  {
+    Serial.println("\nEnd");
+  })
+
+  .onProgress([](unsigned int progress, unsigned int total)
+  {
+    Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
+  })
+
+  .onError([](ota_error_t error)
+  {
+    Serial.printf("Error[%u]: ", error);
+    if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
+    else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
+    else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
+    else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
+    else if (error == OTA_END_ERROR) Serial.println("End Failed");
+
+    digitalWrite(2, HIGH);
+    delay(3000);
+    digitalWrite(2, LOW);
+
+    ESP.restart();
+  });
+
+  ArduinoOTA.begin();
+
+  flash();
+}
+
+void loop()
+{
+  conErrorHandle();
+
+  if(heatControl == 1) //Auto
+  {
+    int a;
+  }
+  else if(heatControl == 2) //Heat up
+  {
+    //Turn off alarm
+    if (millis() >= heatUpAlarm)
+    {
+      valve(0);
+
+      if(revertheatControl) //Go back to auto
+      {
+        heatControl = 1;
+        valve(0);
+        client.publish("heatControl", "auto");
+      }
+      else
+      {
+        heatControl = 0;
+        valve(0);
+        client.publish("heatControl", "cold");
+      }
+    }
+  }
+}
+
+void callback(char* topic, byte* payload, unsigned int length)
+{
+  topicStr = String(topic);
+  payloadStr = "";
+  for (int i = 0; i < length; i++)
+  {
+    payloadStr += (char)payload[i];
+  }
+
+  if (topicStr == "bedColor")
+  {
+    bedColor = payloadStr.toInt();
+    colorWipe(bedColor, 1, 0, 101);
+  }
+  else if (topicStr == "5b")
+  {
+    if (payloadStr == "on")
+    {
+      digitalWrite(supplyPin, LOW);
+    }
+    else if (payloadStr == "off")
+    {
+      digitalWrite(supplyPin, HIGH);
+    }
+  }
+  else if (topicStr == "heatControl")
+  {
+    if (payloadStr == "cold")
+    {
+      heatControl = 0; //Turn off modes
+      revertheatControl = 0; //After next heat up, turn of valve
+      valve(0);
+    }
+    else if (payloadStr == "heat")
+    {
+      heatControl = 0; //Turn off modes
+      revertheatControl = 0; //After next heat up, turn of valve
+      valve(1);
+    }
+    else if (payloadStr == "auto")
+    {
+      heatControl = 1; //Set mode
+      revertheatControl = 1; //After next heat up, go back to auto
+      valve(0);
+    }
+    else if (payloadStr == "heatup")
+    {
+      heatControl = 2; //Set mode
+      valve(1);
+      heatUpAlarm = millis() + heatUpFreq; //Set alarm to turn off valve
+    }
+    else
+    {
+      valve(0);
+    }
+  }
+}
+
+void reconnect()
+{
+  //Loop until we're reconnected
+  while (!client.connected())
+  {
+    Serial.print("Attempting MQTT connection...");
+
+    //Create a random client ID
+    String clientId = "ESP32Client-";
+    clientId += String(random(0xffff), HEX);
+
+    // Attempt to connect
+    if (client.connect(clientId.c_str(), MQTT_USER, MQTT_PASSWORD))
+    {
+      Serial.print(" Connected.");
+      Serial.println();
+      Serial.println();
+
+      //Subscribe list
+      client.subscribe("bedSwitch");
+      client.subscribe("bedColor");
+      client.subscribe("heatButton");
+      client.subscribe("heatControl");
+      client.subscribe("termostat");
+      client.subscribe("5b");
+      client.subscribe("terminal");
+    }
+    else
+    {
+      Serial.print("Failed , rc=");
+      Serial.print(client.state());
+      Serial.println(", try again in 5 seconds.");
+
+      // Wait 5 seconds before retrying
+      delay(5000);
+    }
+  }
+}
+
+void colorWipe(uint32_t color, int wait, int first, int last)
+{
+  for (int i = first; i < last; i++)
+  {    
+    strip.setPixelColor(i, color);         //  Set pixel's color (in RAM)
+    strip.show();                          //  Update strip to match
+    delay(wait);
+  }
+}
+
+void valve(bool pos)
+{
+  if(pos)
+  {
+    digitalWrite(heatPin , LOW);
+    client.publish("valve", "1");
+  }
+  else
+  {
+    digitalWrite(heatPin , HIGH);
+    client.publish("valve", "0");
+  }
+}
+
+void conErrorHandle()
+{
+  //Wifi reconnect
+  if (WiFi.status() != WL_CONNECTED && millis() >= wifiResetAlarm) 
+  {
+    wifiResetAlarm = millis() + wifiResetFreq;
+    WiFi.begin(ssid, password);
+  }
+
+  //MQTT reconnect
+  if(!client.loop() && millis() >= MQTTResetAlarm) 
+  {
+    MQTTResetAlarm = millis() + MQTTResetFreq;
+    reconnect();
+  }
+}
+
+void flash()
+{
+  for (int i = 0; i < 6; i++)
+  {
+    digitalWrite(2, HIGH);
+    delay(200);
+    digitalWrite(2, LOW);
+    delay(200);
+  }
+}
