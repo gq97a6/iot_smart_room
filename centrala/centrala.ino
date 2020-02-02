@@ -1,4 +1,4 @@
-/LED stripsaaa
+/LED strips
 #include <Adafruit_NeoPixel.h>
 Adafruit_NeoPixel stripL(79, 18, NEO_GRB + NEO_KHZ800);
 Adafruit_NeoPixel stripP(74, 5, NEO_GRB + NEO_KHZ800);
