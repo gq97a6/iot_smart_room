@@ -30,18 +30,19 @@ int supplyPin = 14;
 
 //State
 int i;
+bool flip;
 long bedColor;
-byte heatControl = 0; //Cold/Heat(0), Auto(1), Heat up(2)
-bool revertheatControl; //Revert to previous mode before heat up, Cold(0), Auto(1)
+byte heatControl = 0; //Cold(0), Auto(1), Heat up(2), Heat(3)
+byte revertheatControl; //Revert to previous mode before heat up, Cold(0), Auto(1)
 
 //Alarms
-int heatUpFreq = 3 * 60 * 1000;
+int heatUpFreq = 5000;//3 * 60 * 1000;
 long heatUpAlarm;
 
-int heatFreq = 3 * 60 * 1000;
+int heatFreq = 5000;//50 * 60 * 1000; //How long to wait before turing on heating
 long heatAlarm;
 
-int coldFreq = 3 * 60 * 1000;
+int coldFreq = 5000;//3 * 60 * 1000; //How long to wait before turing off heating
 long coldAlarm;
 
 int wifiResetFreq = 5 * 60 * 1000;
@@ -131,7 +132,18 @@ void loop()
 
   if(heatControl == 1) //Auto
   {
-    int a;
+    if(flip && millis() >= heatAlarm) //Wait for alarm to turn on heating
+    {
+      flip = 0;
+      valve(1);
+      coldAlarm = millis() + coldFreq; //Set alarm for turning off heating
+    }
+    else if(!flip && millis() >= coldAlarm) //Wait for alarm to turn off heating
+    {
+      flip = 1;
+      valve(0);
+      heatAlarm = millis() + heatFreq; //Set alarm for turning on heating
+    }
   }
   else if(heatControl == 2) //Heat up
   {
@@ -142,7 +154,9 @@ void loop()
 
       if(revertheatControl) //Go back to auto
       {
-        heatControl = 1;
+        flip = 0; //Start by turn off cycle
+        heatAlarm = millis() + heatFreq; //Set alarm for turning on heating
+        heatControl = 1; //Set mode
         valve(0);
         client.publish("heatControl", "auto");
       }
@@ -184,22 +198,33 @@ void callback(char* topic, byte* payload, unsigned int length)
   else if (topicStr == "heatControl")
   {
     if (payloadStr == "cold")
-    {
+    {        
       heatControl = 0; //Turn off modes
       revertheatControl = 0; //After next heat up, turn of valve
       valve(0);
     }
     else if (payloadStr == "heat")
     {
-      heatControl = 0; //Turn off modes
+      heatControl = 3; //Turn off modes
       revertheatControl = 0; //After next heat up, turn of valve
       valve(1);
     }
     else if (payloadStr == "auto")
     {
+      if(!heatControl)//If changing back from cold mode
+      {
+        flip = 1; //Start by turn on cycle
+        coldAlarm = millis() + coldFreq; //Set alarm for turning off heating
+        valve(1);
+      }
+      else if(heatControl == 3) //If changing back from heat mode
+      {
+        flip = 0; //Start by turn of cycle
+        heatAlarm = millis() + heatFreq; //Set alarm for turning on heating
+        valve(0);
+      }
       heatControl = 1; //Set mode
       revertheatControl = 1; //After next heat up, go back to auto
-      valve(0);
     }
     else if (payloadStr == "heatup")
     {
