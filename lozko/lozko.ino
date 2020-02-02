@@ -36,13 +36,13 @@ byte heatControl = 0; //Cold(0), Auto(1), Heat up(2), Heat(3)
 byte revertheatControl; //Revert to previous mode before heat up, Cold(0), Auto(1)
 
 //Alarms
-int heatUpFreq = 5000;//3 * 60 * 1000;
+int heatUpFreq = 3 * 60 * 1000;
 long heatUpAlarm;
 
-int heatFreq = 5000;//50 * 60 * 1000; //How long to wait before turing on heating
+int heatFreq = 50 * 60 * 1000; //How long to wait before turing on heating
 long heatAlarm;
 
-int coldFreq = 5000;//3 * 60 * 1000; //How long to wait before turing off heating
+int coldFreq = 3 * 60 * 1000; //How long to wait before turing off heating
 long coldAlarm;
 
 int wifiResetFreq = 5 * 60 * 1000;
@@ -130,6 +130,11 @@ void loop()
 {
   conErrorHandle();
 
+  if(WiFi.status() == WL_CONNECTED)
+  {
+    ArduinoOTA.handle();
+  }
+  
   if(heatControl == 1) //Auto
   {
     if(flip && millis() >= heatAlarm) //Wait for alarm to turn on heating
