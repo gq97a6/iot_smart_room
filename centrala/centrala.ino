@@ -45,7 +45,7 @@ String topicStr;
 String payloadStr;
 
 //Alarms
-int updateFreq = 3000;
+int updateFreq = 10000;
 long updateAlarm;
 
 //Lock buttons to prevent errors
