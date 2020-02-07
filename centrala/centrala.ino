@@ -49,14 +49,20 @@ int updateFreq = 10000;
 long updateAlarm;
 
 //Lock buttons to prevent errors
-int heatButtonFreq = 1000;
+int heatButtonFreq = 200;
 long heatButtonAlarm;
-int topBarButtonFreq = 1000;
+int topBarButtonFreq = 200;
 long topBarButtonAlarm;
-int wifiResetFreq = 5 * 60 * 1000;
-long wifiResetAlarm;
-int MQTTResetFreq = 5 * 60 * 1000;
-long MQTTResetAlarm;
+
+//Reconnecting
+int wifiRecFreq = 10000;
+long wifiRecAlarm;
+int mqttRecFreq = 10000;
+long mqttRecAlarm;
+int wifiRecAtm = 0;
+int mqttRecAtm = 0;
+int wifiRec = 5; //After wifiRec times, give up reconnecting and restart esp
+int mqttRec = 5;
 
 //Status
 long deskColor;
@@ -71,7 +77,7 @@ void setup()
 
   pinMode(15, OUTPUT); //5VDC supply
   pinMode(4, OUTPUT); //12VDC supply
-  digitalWrite(15, LOW);
+  digitalWrite(15, HIGH);
   digitalWrite(4, HIGH);
 
   pinMode(buttons[0][0], INPUT_PULLUP); //Button 1
@@ -106,7 +112,7 @@ void setup()
   {
     Serial.println("Connection Failed! Rebooting...");
     digitalWrite(2, HIGH);
-    delay(3000);
+    delay(5000);
     digitalWrite(2, LOW);
 
     ESP.restart();
@@ -186,11 +192,13 @@ void loop()
     if(topBarStatus)
     {
       topBarStatus = 0;
+      digitalWrite(4, HIGH);
       client.publish("12", "off");
     }
     else
     {
       topBarStatus = 1;
+      digitalWrite(4, LOW);
       client.publish("12", "on");
     }
   }
@@ -312,7 +320,7 @@ void reconnect()
     //Subscribe list
     client.subscribe("deskSwitch");
     client.subscribe("deskColor");
-    client.subscribe("terminal");
+    client.subscribe("centralaterminal");
     client.subscribe("12");
     client.subscribe("5");
   }
@@ -359,18 +367,40 @@ void buttonsHandle()
 
 void conErrorHandle()
 {
-  //Wifi reconnect
-  if (WiFi.status() != WL_CONNECTED && millis() >= wifiResetAlarm) 
+  if(client.loop()) //Check mqtt connection
   {
-    wifiResetAlarm = millis() + wifiResetFreq;
-    WiFi.begin(ssid, password);
+    mqttRecAtm = 0; //If fine reset reconnection atempts counter
+  }
+  else if(millis() >= mqttRecAlarm)
+  {
+    mqttRecAlarm = millis() + mqttRecFreq;
+    if(mqttRecAtm >= mqttRec) //After mqttRec tries restart esp.=
+    {
+      ESP.restart(); 
+    }
+    else //Reconnect
+    {
+      mqttRecAtm++;
+      reconnect();
+    }
   }
 
-  //MQTT reconnect
-  if(!client.loop() && millis() >= MQTTResetAlarm) 
+  if(WiFi.status() == WL_CONNECTED) //Check wifi connection
   {
-    MQTTResetAlarm = millis() + MQTTResetFreq;
-    reconnect();
+    wifiRecAtm = 0; //If fine reset reconnection atempts counter
+  }
+  else if(millis() >= wifiRecAlarm) //Wait for wifiRecAlarm
+  {
+    wifiRecAlarm = millis() + wifiRecFreq;
+    if(wifiRecAtm >= wifiRec) //After wifiRec tries restart esp.=
+    {
+      ESP.restart();
+    }
+    else //Reconnect
+    {
+      wifiRecAtm++;
+      WiFi.begin(ssid, password);
+    }
   }
 }
 
