@@ -39,17 +39,21 @@ byte revertheatControl; //Revert to previous mode before heat up, Cold(0), Auto(
 int heatUpFreq = 3 * 60 * 1000;
 long heatUpAlarm;
 
-int heatFreq = 50 * 60 * 1000; //How long to wait before turing on heating
+int heatFreq = 45 * 60 * 1000; //How long to wait before turing on heating
 long heatAlarm;
 
-int coldFreq = 3 * 60 * 1000; //How long to wait before turing off heating
+int coldFreq = 4 * 60 * 1000; //How long to wait before turing off heating
 long coldAlarm;
 
-int wifiResetFreq = 5 * 60 * 1000;
-long wifiResetAlarm;
-
-int MQTTResetFreq = 5 * 60 * 1000;
-long MQTTResetAlarm;
+//Reconnecting
+int wifiRecFreq = 10000;
+long wifiRecAlarm;
+int mqttRecFreq = 10000;
+long mqttRecAlarm;
+int wifiRecAtm = 0;
+int mqttRecAtm = 0;
+int wifiRec = 5; //After wifiRec times, give up reconnecting and restart esp
+int mqttRec = 5;
 
 void setup()
 {
@@ -309,18 +313,40 @@ void valve(bool pos)
 
 void conErrorHandle()
 {
-  //Wifi reconnect
-  if (WiFi.status() != WL_CONNECTED && millis() >= wifiResetAlarm) 
+  if(client.loop()) //Check mqtt connection
   {
-    wifiResetAlarm = millis() + wifiResetFreq;
-    WiFi.begin(ssid, password);
+    mqttRecAtm = 0; //If fine reset reconnection atempts counter
+  }
+  else if(millis() >= mqttRecAlarm)
+  {
+    mqttRecAlarm = millis() + mqttRecFreq;
+    if(mqttRecAtm >= mqttRec) //After mqttRec tries restart esp.=
+    {
+      ESP.restart(); 
+    }
+    else //Reconnect
+    {
+      mqttRecAtm++;
+      reconnect();
+    }
   }
 
-  //MQTT reconnect
-  if(!client.loop() && millis() >= MQTTResetAlarm) 
+  if(WiFi.status() == WL_CONNECTED) //Check wifi connection
   {
-    MQTTResetAlarm = millis() + MQTTResetFreq;
-    reconnect();
+    wifiRecAtm = 0; //If fine reset reconnection atempts counter
+  }
+  else if(millis() >= wifiRecAlarm) //Wait for wifiRecAlarm
+  {
+    wifiRecAlarm = millis() + wifiRecFreq;
+    if(wifiRecAtm >= wifiRec) //After wifiRec tries restart esp.=
+    {
+      ESP.restart();
+    }
+    else //Reconnect
+    {
+      wifiRecAtm++;
+      WiFi.begin(ssid, password);
+    }
   }
 }
 
