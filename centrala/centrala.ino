@@ -77,7 +77,7 @@ void setup()
 
   pinMode(15, OUTPUT); //5VDC supply
   pinMode(4, OUTPUT); //12VDC supply
-  digitalWrite(15, HIGH);
+  digitalWrite(15, LOW);
   digitalWrite(4, HIGH);
 
   pinMode(buttons[0][0], INPUT_PULLUP); //Button 1

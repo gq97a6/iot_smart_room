@@ -2,27 +2,24 @@
 #include <Adafruit_NeoPixel.h>
 Adafruit_NeoPixel strip(101, 13, NEO_GRB + NEO_KHZ800);
 
-//MQTT and WiFI
-#include <SPI.h>
+//OTA
 #include <WiFi.h>
 #include <ESPmDNS.h>
-#include <ArduinoOTA.h>
-#include <PubSubClient.h>
 #include <WiFiUdp.h>
-String topicStr;
-String payloadStr;
+#include <ArduinoOTA.h>
 
-//MQTT server details
-const char* MQTT_SERVER = "tailor.cloudmqtt.com";
-#define MQTT_PORT 11045
-#define MQTT_USER "derwsywl"
-#define MQTT_PASSWORD "IItmHbbnu9mD"
+//HTTP server
+#include <WiFi.h>
+#include <HTTPClient.h>
 
-//WiFi details
-const char* ssid = "2.4G-Vectra-WiFi-8F493A";
-const char* password = "brygida71";
-WiFiClient wifiClient;
-PubSubClient client(wifiClient);
+//Your IP address or domain name with URL path
+const char* serverNameTemp = "http://192.168.4.1/temperature";
+const char* serverNameHumi = "http://192.168.4.1/humidity";
+const char* serverNamePres = "http://192.168.4.1/pressure";
+
+//HTTP server acces point details
+const char* ssid = "ESP32-Access-Point";
+const char* password = "123456789";
 
 //Pins
 int heatPin = 14;
@@ -132,6 +129,10 @@ void setup()
 
 void loop()
 {
+  //temperature = httpGETRequest(serverNameTemp);
+  //humidity = httpGETRequest(serverNameHumi);
+  //pressure = httpGETRequest(serverNamePres);
+  
   conErrorHandle();
 
   if(WiFi.status() == WL_CONNECTED)
@@ -348,6 +349,27 @@ void conErrorHandle()
       WiFi.begin(ssid, password);
     }
   }
+}
+
+String httpGETRequest(const char* serverName)
+{
+  HTTPClient http;
+    
+  //Your IP address with path or Domain name with URL path 
+  http.begin(serverName);
+  
+  //Send HTTP POST request
+  int httpResponseCode = http.GET();
+  String payload = "--"; 
+  
+  if (httpResponseCode>0)
+  {
+    payload = http.getString();
+  }
+  
+  http.end();
+
+  return payload;
 }
 
 void flash()
