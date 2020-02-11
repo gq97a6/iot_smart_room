@@ -220,7 +220,17 @@ void callback(char* topic, byte* payload, unsigned int length)
     {
       tempReceivedAlarm = millis() + tempReceivedFreq; //Safty
       temperature = payloadStr.toFloat();
-
+    }
+    else
+    {
+      temperature = 100;
+    }
+  }
+  else if (topicStr == "termostat")
+  {
+    if(payloadStr.toFloat() > 0 && payloadStr.toFloat() < 40)
+    {
+      termostat = payloadStr.toFloat();
       //Turn on auto mode
       if(!heatControl)//If changing back from cold mode
       {
@@ -236,17 +246,6 @@ void callback(char* topic, byte* payload, unsigned int length)
       }
       heatControl = 1; //Set mode
       revertheatControl = 1; //After next heat up, go back to auto
-    }
-    else
-    {
-      temperature = 100;
-    }
-  }
-  else if (topicStr == "termostat")
-  {
-    if(payloadStr.toFloat() > 0 && payloadStr.toFloat() < 40)
-    {
-      termostat = payloadStr.toFloat(); 
     }
     else
     {
@@ -332,6 +331,7 @@ void reconnect()
       client.subscribe("heatButton");
       client.subscribe("heatControl");
       client.subscribe("termostat");
+      client.subscribe("temp");
       client.subscribe("5b");
       client.subscribe("terminal");
     }
