@@ -34,6 +34,8 @@ bool flip;
 long bedColor;
 byte heatControl = 0; //Cold(0), Auto(1), Heat up(2), Heat(3)
 byte revertheatControl; //Revert to previous mode before heat up, Cold(0), Auto(1)
+float temperature = 100;
+float termostat = 0;
 
 //Alarms
 int heatUpFreq = 3 * 60 * 1000;
@@ -44,6 +46,9 @@ long heatAlarm;
 
 int coldFreq = 4 * 60 * 1000; //How long to wait before turing off heating
 long coldAlarm;
+
+int tempReceivedFreq = 20000;
+long tempReceivedAlarm;
 
 //Reconnecting
 int wifiRecFreq = 10000;
@@ -141,18 +146,34 @@ void loop()
   
   if(heatControl == 1) //Auto
   {
-    if(flip && millis() >= heatAlarm) //Wait for alarm to turn on heating
+    if(millis() >= tempReceivedAlarm)
     {
-      flip = 0;
-      valve(1);
-      coldAlarm = millis() + coldFreq; //Set alarm for turning off heating
-    }
-    else if(!flip && millis() >= coldAlarm) //Wait for alarm to turn off heating
-    {
-      flip = 1;
+      //Cold mode
+      heatControl = 0; //Turn off modes
+      revertheatControl = 0; //After next heat up, turn of valve
       valve(0);
-      heatAlarm = millis() + heatFreq; //Set alarm for turning on heating
     }
+    
+    if(temperature > termostat)
+    {
+      valve(0);
+    }
+    else if(temperature < termostat - 0.2)
+    {
+      valve(1);
+    }
+//    if(flip && millis() >= heatAlarm) //Wait for alarm to turn on heating
+//    {
+//      flip = 0;
+//      valve(1);
+//      coldAlarm = millis() + coldFreq; //Set alarm for turning off heating
+//    }
+//    else if(!flip && millis() >= coldAlarm) //Wait for alarm to turn off heating
+//    {
+//      flip = 1;
+//      valve(0);
+//      heatAlarm = millis() + heatFreq; //Set alarm for turning on heating
+//    }
   }
   else if(heatControl == 2) //Heat up
   {
@@ -193,6 +214,45 @@ void callback(char* topic, byte* payload, unsigned int length)
     bedColor = payloadStr.toInt();
     colorWipe(bedColor, 1, 0, 101);
   }
+  else if (topicStr == "temp")
+  {
+    if(payloadStr.toFloat() > 0 && payloadStr.toFloat() < 40)
+    {
+      tempReceivedAlarm = millis() + tempReceivedFreq; //Safty
+      temperature = payloadStr.toFloat();
+
+      //Turn on auto mode
+      if(!heatControl)//If changing back from cold mode
+      {
+        flip = 1; //Start by turn on cycle
+        coldAlarm = millis() + coldFreq; //Set alarm for turning off heating
+        valve(1);
+      }
+      else if(heatControl == 3) //If changing back from heat mode
+      {
+        flip = 0; //Start by turn of cycle
+        heatAlarm = millis() + heatFreq; //Set alarm for turning on heating
+        valve(0);
+      }
+      heatControl = 1; //Set mode
+      revertheatControl = 1; //After next heat up, go back to auto
+    }
+    else
+    {
+      temperature = 100;
+    }
+  }
+  else if (topicStr == "termostat")
+  {
+    if(payloadStr.toFloat() > 0 && payloadStr.toFloat() < 40)
+    {
+      termostat = payloadStr.toFloat(); 
+    }
+    else
+    {
+      termostat = 0;
+    }
+  }
   else if (topicStr == "5b")
   {
     if (payloadStr == "on")
@@ -207,7 +267,7 @@ void callback(char* topic, byte* payload, unsigned int length)
   else if (topicStr == "heatControl")
   {
     if (payloadStr == "cold")
-    {        
+    {
       heatControl = 0; //Turn off modes
       revertheatControl = 0; //After next heat up, turn of valve
       valve(0);
