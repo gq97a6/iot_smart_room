@@ -77,14 +77,13 @@ void setup()
 
   pinMode(15, OUTPUT); //5VDC supply
   pinMode(4, OUTPUT); //12VDC supply
-  digitalWrite(15, LOW);
+  digitalWrite(15, HIGH);
   digitalWrite(4, HIGH);
 
-  pinMode(buttons[0][0], INPUT_PULLUP); //Button 1
-  pinMode(buttons[1][0], INPUT_PULLUP); //Button 2
-  pinMode(buttons[2][0], INPUT_PULLUP); //Button 3
-  pinMode(buttons[3][0], INPUT_PULLUP); //Button 4
-  pinMode(buttons[4][0], INPUT_PULLUP); //Button 5
+  for(i = 0; i<=4; i++)
+  {
+    pinMode(buttons[i][0], INPUT_PULLUP);
+  }
   pinMode(34, INPUT); //Potn
 
   stripP.begin();
@@ -94,8 +93,6 @@ void setup()
   stripL.begin();
   stripL.show();
   stripL.setBrightness(255);
-
-  colorWipe(stripL.Color(15, 0, 255), 10, 0, 100);
 
   bme.begin();
 
@@ -127,17 +124,14 @@ void setup()
     else // U_SPIFFS
       type = "filesystem";
   })
-
   .onEnd([]()
   {
     Serial.println("\nEnd");
   })
-
   .onProgress([](unsigned int progress, unsigned int total)
   {
     Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
   })
-
   .onError([](ota_error_t error)
   {
     Serial.printf("Error[%u]: ", error);
@@ -264,7 +258,7 @@ void callback(char* topic, byte* payload, unsigned int length)
   {
     payloadStr += (char)payload[i];
   }
-
+  
   if (topicStr == "deskSwitch")
   {
     if(payloadStr == "on")
@@ -279,10 +273,11 @@ void callback(char* topic, byte* payload, unsigned int length)
       client.publish("5", "off");
     }
   }
+//--------------------------------------------------------------------------------
   else if (topicStr == "deskColor")
   {
     deskColor = payloadStr.toInt();
-    colorWipe(deskColor, 1, 0, 80);
+    colorWipe(deskColor, 10, 0, 80);
   }
   else if (topicStr == "12")
   {
@@ -295,6 +290,7 @@ void callback(char* topic, byte* payload, unsigned int length)
       digitalWrite(4, HIGH);
     }
   }
+//--------------------------------------------------------------------------------
   else if (topicStr == "5")
   {
     if(payloadStr == "on")
@@ -332,11 +328,12 @@ void colorWipe(uint32_t color, int wait, int first, int last)
   {
     stripL.setPixelColor(i, color);
     stripP.setPixelColor(i, color);
-    stripL.show();
-    stripP.show();
   
     delay(wait);
   }
+  
+  stripL.show();
+  stripP.show();
 }
 
 void buttonsHandle()
@@ -367,14 +364,15 @@ void buttonsHandle()
 
 void conErrorHandle()
 {
-  if(client.loop()) //Check mqtt connection
+//Check mqtt connection --------------------------------------------------------------------------------
+  if(client.loop())
   {
     mqttRecAtm = 0; //If fine reset reconnection atempts counter
   }
   else if(millis() >= mqttRecAlarm)
   {
     mqttRecAlarm = millis() + mqttRecFreq;
-    if(mqttRecAtm >= mqttRec) //After mqttRec tries restart esp.=
+    if(mqttRecAtm >= mqttRec) //After mqttRec tries restart esp.
     {
       ESP.restart(); 
     }
@@ -384,15 +382,15 @@ void conErrorHandle()
       reconnect();
     }
   }
-
-  if(WiFi.status() == WL_CONNECTED) //Check wifi connection
+//Check wifi connection --------------------------------------------------------------------------------
+  if(WiFi.status() == WL_CONNECTED)
   {
     wifiRecAtm = 0; //If fine reset reconnection atempts counter
   }
   else if(millis() >= wifiRecAlarm) //Wait for wifiRecAlarm
   {
     wifiRecAlarm = millis() + wifiRecFreq;
-    if(wifiRecAtm >= wifiRec) //After wifiRec tries restart esp.=
+    if(wifiRecAtm >= wifiRec) //After wifiRec tries restart esp.
     {
       ESP.restart();
     }

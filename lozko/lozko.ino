@@ -32,8 +32,8 @@ int supplyPin = 27;
 int i;
 bool flip;
 long bedColor;
-byte heatControl = 0; //Cold(0), Auto(1), Heat up(2), Heat(3)
-byte revertheatControl; //Revert to previous mode before heat up, Cold(0), Auto(1)
+byte currentHeatMode = 0; //Cold(0), Heat(1), Auto(2), Heat up(3)
+byte previousHeatMode = 0;
 float temperature = 100;
 float termostat = 0;
 
@@ -103,17 +103,14 @@ void setup()
     else // U_SPIFFS
       type = "filesystem";
   })
-
   .onEnd([]()
   {
     Serial.println("\nEnd");
   })
-
   .onProgress([](unsigned int progress, unsigned int total)
   {
     Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
   })
-
   .onError([](ota_error_t error)
   {
     Serial.printf("Error[%u]: ", error);
@@ -144,24 +141,22 @@ void loop()
     ArduinoOTA.handle();
   }
   
-  if(heatControl == 1) //Auto
+  if(currentHeatMode == 2) //Auto
   {
     if(millis() >= tempReceivedAlarm)
     {
-      //Cold mode
-      heatControl = 0; //Turn off modes
-      revertheatControl = 0; //After next heat up, turn of valve
-      valve(0);
+      setHeatMode(0);
     }
     
     if(temperature > termostat)
     {
       valve(0);
     }
-    else if(temperature < termostat - 0.2)
+    else if(temperature < termostat - 0.3)
     {
       valve(1);
     }
+//OLD --------------------------------------------------------------------------------
 //    if(flip && millis() >= heatAlarm) //Wait for alarm to turn on heating
 //    {
 //      flip = 0;
@@ -175,26 +170,20 @@ void loop()
 //      heatAlarm = millis() + heatFreq; //Set alarm for turning on heating
 //    }
   }
-  else if(heatControl == 2) //Heat up
+  else if(currentHeatMode == 3) //Heat up
   {
-    //Turn off alarm
-    if (millis() >= heatUpAlarm)
+    
+    if (millis() >= heatUpAlarm)//Turn off alarm
     {
       valve(0);
 
-      if(revertheatControl) //Go back to auto
+      if(previousHeatMode == 2)
       {
-        flip = 0; //Start by turn off cycle
-        heatAlarm = millis() + heatFreq; //Set alarm for turning on heating
-        heatControl = 1; //Set mode
-        valve(0);
-        client.publish("heatControl", "auto");
+        setHeatMode(2);
       }
       else
       {
-        heatControl = 0;
-        valve(0);
-        client.publish("heatControl", "cold");
+        setHeatMode(0);
       }
     }
   }
@@ -208,17 +197,18 @@ void callback(char* topic, byte* payload, unsigned int length)
   {
     payloadStr += (char)payload[i];
   }
-
+  
   if (topicStr == "bedColor")
   {
     bedColor = payloadStr.toInt();
     colorWipe(bedColor, 1, 0, 101);
   }
+//--------------------------------------------------------------------------------
   else if (topicStr == "temp")
   {
-    if(payloadStr.toFloat() > 0 && payloadStr.toFloat() < 40)
+    if(payloadStr.toFloat() > 0 && payloadStr.toFloat() < 40) //Validate
     {
-      tempReceivedAlarm = millis() + tempReceivedFreq; //Safty
+      tempReceivedAlarm = millis() + tempReceivedFreq; //Check if we are getting current temperature
       temperature = payloadStr.toFloat();
     }
     else
@@ -226,32 +216,21 @@ void callback(char* topic, byte* payload, unsigned int length)
       temperature = 100;
     }
   }
+//--------------------------------------------------------------------------------
   else if (topicStr == "termostat")
   {
-    if(payloadStr.toFloat() > 0 && payloadStr.toFloat() < 40)
+    if(payloadStr.toFloat() > 0 && payloadStr.toFloat() < 40) //Validate
     {
       termostat = payloadStr.toFloat();
-      //Turn on auto mode
-      if(!heatControl)//If changing back from cold mode
-      {
-        flip = 1; //Start by turn on cycle
-        coldAlarm = millis() + coldFreq; //Set alarm for turning off heating
-        valve(1);
-      }
-      else if(heatControl == 3) //If changing back from heat mode
-      {
-        flip = 0; //Start by turn of cycle
-        heatAlarm = millis() + heatFreq; //Set alarm for turning on heating
-        valve(0);
-      }
-      heatControl = 1; //Set mode
-      revertheatControl = 1; //After next heat up, go back to auto
+      setHeatMode(2);
     }
     else
     {
       termostat = 0;
+      setHeatMode(0);
     }
   }
+//--------------------------------------------------------------------------------
   else if (topicStr == "5b")
   {
     if (payloadStr == "on")
@@ -263,87 +242,50 @@ void callback(char* topic, byte* payload, unsigned int length)
       digitalWrite(supplyPin, HIGH);
     }
   }
+//--------------------------------------------------------------------------------
   else if (topicStr == "heatControl")
   {
     if (payloadStr == "cold")
     {
-      heatControl = 0; //Turn off modes
-      revertheatControl = 0; //After next heat up, turn of valve
-      valve(0);
+      setHeatMode(0);
     }
     else if (payloadStr == "heat")
     {
-      heatControl = 3; //Turn off modes
-      revertheatControl = 0; //After next heat up, turn of valve
-      valve(1);
+      setHeatMode(1);
     }
     else if (payloadStr == "auto")
     {
-      if(!heatControl)//If changing back from cold mode
-      {
-        flip = 1; //Start by turn on cycle
-        coldAlarm = millis() + coldFreq; //Set alarm for turning off heating
-        valve(1);
-      }
-      else if(heatControl == 3) //If changing back from heat mode
-      {
-        flip = 0; //Start by turn of cycle
-        heatAlarm = millis() + heatFreq; //Set alarm for turning on heating
-        valve(0);
-      }
-      heatControl = 1; //Set mode
-      revertheatControl = 1; //After next heat up, go back to auto
+      setHeatMode(2);
     }
     else if (payloadStr == "heatup")
     {
-      heatControl = 2; //Set mode
-      valve(1);
-      heatUpAlarm = millis() + heatUpFreq; //Set alarm to turn off valve
+      setHeatMode(3);
     }
     else
     {
-      valve(0);
+      setHeatMode(0);
     }
   }
 }
 
 void reconnect()
 {
-  //Loop until we're reconnected
-  while (!client.connected())
+  //Create a random client ID
+  String clientId = "ESP32Client-";
+  clientId += String(random(0xffff), HEX);
+
+  // Attempt to connect
+  if (client.connect(clientId.c_str(), MQTT_USER, MQTT_PASSWORD))
   {
-    Serial.print("Attempting MQTT connection...");
-
-    //Create a random client ID
-    String clientId = "ESP32Client-";
-    clientId += String(random(0xffff), HEX);
-
-    // Attempt to connect
-    if (client.connect(clientId.c_str(), MQTT_USER, MQTT_PASSWORD))
-    {
-      Serial.print(" Connected.");
-      Serial.println();
-      Serial.println();
-
-      //Subscribe list
-      client.subscribe("bedSwitch");
-      client.subscribe("bedColor");
-      client.subscribe("heatButton");
-      client.subscribe("heatControl");
-      client.subscribe("termostat");
-      client.subscribe("temp");
-      client.subscribe("5b");
-      client.subscribe("terminal");
-    }
-    else
-    {
-      Serial.print("Failed , rc=");
-      Serial.print(client.state());
-      Serial.println(", try again in 5 seconds.");
-
-      // Wait 5 seconds before retrying
-      delay(5000);
-    }
+    //Subscribe list
+    client.subscribe("bedSwitch");
+    client.subscribe("bedColor");
+    client.subscribe("heatButton");
+    client.subscribe("heatControl");
+    client.subscribe("termostat");
+    client.subscribe("temp");
+    client.subscribe("5b");
+    client.subscribe("terminal");
   }
 }
 
@@ -351,9 +293,54 @@ void colorWipe(uint32_t color, int wait, int first, int last)
 {
   for (int i = first; i < last; i++)
   {    
-    strip.setPixelColor(i, color);         //  Set pixel's color (in RAM)
-    strip.show();                          //  Update strip to match
+    strip.setPixelColor(i, color);
+    strip.show();
     delay(wait);
+  }
+}
+
+void setHeatMode(int m)
+{
+  switch(m)
+//Cold --------------------------------------------------------------------------------
+    case 0:
+    {
+      previousHeatMode = currentHeatMode;
+      currentHeatMode = 0;
+      valve(0);
+      break;
+//Heat --------------------------------------------------------------------------------      
+    case 1:
+      previousHeatMode = currentHeatMode;
+      currentHeatMode = 1;
+      valve(1);
+      break;
+//Auto --------------------------------------------------------------------------------
+    case 2:
+      if(!previousHeatMode)//If changing back from cold mode
+      {
+        flip = 1; //Start by on cycle
+        coldAlarm = millis() + coldFreq; //Set alarm for turning off heating
+        previousHeatMode = currentHeatMode;
+        currentHeatMode = 2;
+        valve(1);
+      }
+      else if(previousHeatMode || previousHeatMode == 3) //If changing back from heat/heatup mode 
+      {
+        flip = 0; //Start by off cycle
+        heatAlarm = millis() + heatFreq; //Set alarm for turning on heating
+        previousHeatMode = currentHeatMode;
+        currentHeatMode = 2;
+        valve(0);
+      }
+      break;
+//Heat up --------------------------------------------------------------------------------
+    case 3:
+      heatUpAlarm = millis() + heatUpFreq; //Set alarm to turn off valve
+      previousHeatMode = currentHeatMode;
+      currentHeatMode = 3;
+      valve(1);
+      break;
   }
 }
 
@@ -373,14 +360,15 @@ void valve(bool pos)
 
 void conErrorHandle()
 {
-  if(client.loop()) //Check mqtt connection
+//Check mqtt connection --------------------------------------------------------------------------------
+  if(client.loop())
   {
     mqttRecAtm = 0; //If fine reset reconnection atempts counter
   }
   else if(millis() >= mqttRecAlarm)
   {
     mqttRecAlarm = millis() + mqttRecFreq;
-    if(mqttRecAtm >= mqttRec) //After mqttRec tries restart esp.=
+    if(mqttRecAtm >= mqttRec) //After mqttRec tries restart esp.
     {
       ESP.restart(); 
     }
@@ -390,15 +378,15 @@ void conErrorHandle()
       reconnect();
     }
   }
-
-  if(WiFi.status() == WL_CONNECTED) //Check wifi connection
+//Check wifi connection --------------------------------------------------------------------------------
+  if(WiFi.status() == WL_CONNECTED)
   {
     wifiRecAtm = 0; //If fine reset reconnection atempts counter
   }
   else if(millis() >= wifiRecAlarm) //Wait for wifiRecAlarm
   {
     wifiRecAlarm = millis() + wifiRecFreq;
-    if(wifiRecAtm >= wifiRec) //After wifiRec tries restart esp.=
+    if(wifiRecAtm >= wifiRec) //After wifiRec tries restart esp.
     {
       ESP.restart();
     }
