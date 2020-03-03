@@ -364,7 +364,6 @@ void eepromGet()
   termostat = preferences.getFloat("termst", 0);
 }
 
-
 void conErrorHandle()
 {
 //Check mqtt connection --------------------------------------------------------------------------------

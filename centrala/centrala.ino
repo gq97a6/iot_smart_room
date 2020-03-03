@@ -1,3 +1,7 @@
+//EEPROM
+#include <Preferences.h>
+Preferences preferences;
+
 //LED strips
 #include <Adafruit_NeoPixel.h>
 Adafruit_NeoPixel stripL(79, 18, NEO_GRB + NEO_KHZ800);
@@ -341,7 +345,7 @@ void callback(char* topic, byte* payload, unsigned int length)
       deskStrip = 1;
       client.publish("c5", "1");
       digitalWrite(15, LOW);
-      colorWipe(deskColor, 10, 0, 80);
+      colorWipe(deskColor, 2, 0, 80);
     }
     else if (payloadStr == "0")
     {
@@ -377,7 +381,7 @@ void callback(char* topic, byte* payload, unsigned int length)
   {
     payloadStr.toCharArray(charArray, 8);
     deskColor = toIntColor(charArray);
-    colorWipe(deskColor, 10, 0, 80);
+    colorWipe(deskColor, 2, 0, 80);
   }
 }
 
@@ -468,9 +472,37 @@ void buttonsHandle()
   }
 }
 
+//-------------------------------------------------------------------------------- EEPROM #FIX
+//void eepromPut()
+//{
+//  preferences.putDouble("hUpAlr", heatUpAlarm);
+//  preferences.putUInt("bedClr", bedColor);
+//  preferences.putUInt("htMd", heatMode);
+//  preferences.putFloat("termst", termostat);
+//
+//  float termostat = 10;
+//  String heatMode = "cold";
+//  bool valve;
+//  bool c12;
+//  bool c5;
+//  bool topBar;
+//  bool bedStrip;
+//  bool deskStrip;
+//  int bedColor = 255;
+//  int deskColor = 255;
+//}
+//
+//void eepromGet()
+//{
+//  heatUpAlarm = preferences.getDouble("hUpAlr", 0);
+//  bedColor = preferences.getUInt("bedClr", 255);
+//  heatMode = preferences.getUInt("htMd", 0);
+//  termostat = preferences.getFloat("termst", 0);
+//}
+
 void conErrorHandle()
 {
-//Check mqtt connection --------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------- Check mqtt connection 
   if(client.loop())
   {
     mqttRecAtm = 0; //If fine reset reconnection atempts counter
@@ -488,7 +520,7 @@ void conErrorHandle()
       reconnect();
     }
   }
-//Check wifi connection --------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------- Check wifi connection 
   if(WiFi.status() == WL_CONNECTED)
   {
     wifiRecAtm = 0; //If fine reset reconnection atempts counter
