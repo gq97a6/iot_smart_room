@@ -17,6 +17,7 @@ Adafruit_BME280 bme;
 #include <ArduinoOTA.h>
 #include <PubSubClient.h>
 #include <WiFiUdp.h>
+#include <ESP32Ping.h>
 
 //MQTT server details
 const char* MQTT_SERVER = "tailor.cloudmqtt.com";
@@ -24,11 +25,22 @@ const char* MQTT_SERVER = "tailor.cloudmqtt.com";
 #define MQTT_USER "derwsywl"
 #define MQTT_PASSWORD "IItmHbbnu9mD"
 
+//HTML and HTML server details
+#include <WiFiClient.h>
+#include <WebServer.h>
+#include <ESPmDNS.h>
+WebServer server(80);
+const char* www_username = "admin";
+const char* www_password = "esp32";
+const char* www_realm = "Custom Auth Realm";
+String authFailResponse = "Authentication Failed";
+
 //WiFi details
 const char* ssid = "2.4G-Vectra-WiFi-8F493A";
 const char* password = "brygida71";
 WiFiClient wifiClient;
 PubSubClient client(wifiClient);
+IPAddress ip (8, 8, 8, 8); // The remote ip to ping
 
 //Variables
 bool state; //Button state
@@ -65,8 +77,23 @@ int wifiRec = 5; //After wifiRec times, give up reconnecting and restart esp
 int mqttRec = 5;
 
 //Status
-long deskColor;
-int topBarStatus;
+float temp;
+int humi;
+int pres;
+//--------------------
+float termostat;
+String heatMode;
+bool valve;
+//--------------------
+bool c12;
+bool c5;
+bool b5;
+//--------------------
+bool topBar;
+bool bedStrip;
+bool deskStrip;
+int bedColor;
+int deskColor;
 
 int i; int ii; char charArray[8]; int poten;
 void setup()
@@ -105,15 +132,6 @@ void setup()
   Serial.println("Booting");
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
-  while (WiFi.waitForConnectResult() != WL_CONNECTED)
-  {
-    Serial.println("Connection Failed! Rebooting...");
-    digitalWrite(2, HIGH);
-    delay(5000);
-    digitalWrite(2, LOW);
-
-    ESP.restart();
-  }
 
   ArduinoOTA
   .onStart([]()
@@ -148,20 +166,24 @@ void setup()
     ESP.restart();
   });
 
+  httpServer();
   ArduinoOTA.begin();
-
-  flash();
 }
 
 void loop()
 {
-  conErrorHandle();
+  server.handleClient(); //HTML maintenance
+  conErrorHandle(); //OTA and connection maintenance
 
   if(WiFi.status() == WL_CONNECTED)
   {
     ArduinoOTA.handle();
   }
-  
+
+  temp = bme.readTemperature();
+  humi = bme.readHumidity();
+  pres = bme.readPressure() / 100.0F;
+
   if (millis() >= updateAlarm)
   {
     updateAlarm = millis() + updateFreq;
@@ -173,7 +195,7 @@ void loop()
     client.publish("humi", charArray);
     
     String(bme.readPressure() / 100.0F).toCharArray(charArray, 8);
-    client.publish("prea", charArray);
+    client.publish("pres", charArray);
   }
 
   buttonsHandle();
@@ -183,17 +205,17 @@ void loop()
   {
     topBarButtonAlarm = millis() + topBarButtonFreq;
     
-    if(topBarStatus)
+    if(topBar)
     {
-      topBarStatus = 0;
+      topBar = 0;
       digitalWrite(4, HIGH);
-      client.publish("12", "off");
+      client.publish("c12", "0");
     }
     else
     {
-      topBarStatus = 1;
+      topBar = 1;
       digitalWrite(4, LOW);
-      client.publish("12", "on");
+      client.publish("c12", "1");
     }
   }
 
@@ -259,48 +281,101 @@ void callback(char* topic, byte* payload, unsigned int length)
     payloadStr += (char)payload[i];
   }
   
-  if (topicStr == "deskSwitch")
+  if (topicStr == "termostat")
   {
-    if(payloadStr == "on")
-    {
-      digitalWrite(15, LOW);
-      colorWipe(deskColor, 1, 0, 80);
-      client.publish("5", "on");
-    }
-    else if(payloadStr == "off")
-    {
-      digitalWrite(15, HIGH);
-      client.publish("5", "off");
-    }
+    termostat = payloadStr.toInt();
   }
 //--------------------------------------------------------------------------------
-  else if (topicStr == "deskColor")
+  else if (topicStr == "heatMode")
   {
-    deskColor = payloadStr.toInt();
-    colorWipe(deskColor, 10, 0, 80);
+    heatMode = payloadStr;
   }
-  else if (topicStr == "12")
+//--------------------------------------------------------------------------------
+  else if (topicStr == "valve")
   {
-    if(payloadStr == "on")
+    valve = payloadStr.toInt();
+  }
+//--------------------------------------------------------------------------------
+  else if (topicStr == "c12")
+  {
+    if (payloadStr == "1")
     {
+      c12 = 1;
       digitalWrite(4, LOW);
     }
-    else if(payloadStr == "off")
+    else if (payloadStr == "0")
     {
+      c12 = 0;
       digitalWrite(4, HIGH);
     }
   }
 //--------------------------------------------------------------------------------
-  else if (topicStr == "5")
+  else if (topicStr == "c5")
   {
-    if(payloadStr == "on")
+    if (payloadStr == "1")
     {
+      c5 = 1;
       digitalWrite(15, LOW);
     }
-    else if(payloadStr == "off")
+    else if (payloadStr == "0")
     {
+      c5 = 0;
       digitalWrite(15, HIGH);
     }
+  }
+//--------------------------------------------------------------------------------
+  else if (topicStr == "b5")
+  {
+    b5 = payloadStr.toInt();
+  }
+//--------------------------------------------------------------------------------
+  else if (topicStr == "bedStrip")
+  {
+    bedStrip = payloadStr.toInt();
+  }
+//--------------------------------------------------------------------------------
+  else if (topicStr == "deskStrip")
+  {
+    if (payloadStr == "1")
+    {
+      deskStrip = 1;
+      client.publish("c5", "1");
+      digitalWrite(15, LOW);
+      colorWipe(deskColor, 10, 0, 80);
+    }
+    else if (payloadStr == "0")
+    {
+      deskStrip = 0;
+      client.publish("c5", "0");
+      digitalWrite(15, HIGH);
+    }
+  }
+//--------------------------------------------------------------------------------
+  else if (topicStr == "topBar")
+  {
+    if (payloadStr == "1")
+    {
+      topBar = 1;
+      client.publish("c12", "1");
+      digitalWrite(4, LOW);
+    }
+    else if (payloadStr == "0")
+    {
+      topBar = 0;
+      client.publish("c12", "0");
+      digitalWrite(4, HIGH);
+    }
+  }
+//--------------------------------------------------------------------------------
+  else if (topicStr == "bedColor")
+  {
+    bedColor = payloadStr.toInt();
+  }
+//--------------------------------------------------------------------------------
+  else if (topicStr == "deskColor")
+  {,0+*3cm..vmcvgaeq  aZQ EVN.0
+    deskColor = payloadStr.toICt();
+    colorWipe(deskColor, 10, 0, 80);
   }
 }
 
@@ -314,11 +389,18 @@ void reconnect()
   if (client.connect(clientId.c_str(), MQTT_USER, MQTT_PASSWORD))
   {
     //Subscribe list
-    client.subscribe("deskSwitch");
+    client.subscribe("topBar");
+    client.subscribe("fan");
     client.subscribe("deskColor");
-    client.subscribe("centralaterminal");
-    client.subscribe("12");
-    client.subscribe("5");
+    client.subscribe("bedColor");
+    client.subscribe("bedStrip");
+    client.subscribe("deskStrip");
+    client.subscribe("c12");
+    client.subscribe("c5");
+    client.subscribe("b5");
+    client.subscribe("heatControl");
+    client.subscribe("termostat");
+    client.subscribe("valve");
   }
 }
 
@@ -387,6 +469,10 @@ void conErrorHandle()
   {
     wifiRecAtm = 0; //If fine reset reconnection atempts counter
   }
+//  else if(Ping.ping(ip, 3); //Check internet connection
+//  {
+//    
+//  }
   else if(millis() >= wifiRecAlarm) //Wait for wifiRecAlarm
   {
     wifiRecAlarm = millis() + wifiRecFreq;
@@ -411,4 +497,87 @@ void flash()
     digitalWrite(2, LOW);
     delay(200);
   }
+}
+
+//-------------------------------------------------------------------------------- httpServer
+void httpServer()
+{
+  if (MDNS.begin("esp32"))
+  {
+    Serial.println("MDNS responder started");
+  }
+
+  server.on("/", []()
+  {
+    if (!server.authenticate(www_username, www_password))
+    {
+      //Digest Auth Method with Custom realm and Failure Response
+      return server.requestAuthentication(DIGEST_AUTH, www_realm, authFailResponse);
+    }
+   
+    mainPage();
+  });
+  server.onNotFound(notFoundPage);
+  
+  server.begin();
+}
+
+//-------------------------------------------------------------------------------- http pages
+void notFoundPage()
+{
+  String message = "File Not Found\n\n";
+  message += "URI: ";
+  message += server.uri();
+  message += "\nMethod: ";
+  message += (server.method() == HTTP_GET) ? "GET" : "POST";
+  message += "\nArguments: ";
+  message += server.args();
+  message += "\n";
+
+  for (uint8_t i = 0; i < server.args(); i++)
+  {
+    message += " " + server.argName(i) + ": " + server.arg(i) + "\n";
+  }
+
+  server.send(404, "text/plain", message);
+}
+
+void mainPage()
+{
+  char html[1000];
+  snprintf(html, 1000,
+  
+  "<html>\
+    <head>\
+      <meta http-equiv='refresh' content='99999'/>\
+      <title>ESP32 Demo</title>\
+      <style>\
+        body { background-color: #cccccc; font-family: Arial, Helvetica, Sans-Serif; Color: #000088; }\
+      </style>\
+    </head>\
+    <body>\
+      <p>Temperature: %1.1f</p>\
+      <p>Humidity: %d</p>\
+      <p>Preassure: %d</p>\
+      </br></br>\
+      <p>Termostat: %1.1f</p>\
+      <p>Heat mode: %s</p>\
+      <p>Valve: %d</p>\
+      </br></br>\
+      <p>12V: %d</p>\
+      <p>5V: %d</p>\
+      <p>5V (bed): %d</p>\
+      </br></br>\
+      <p>Top bar: %d</p>\
+      <p>Bed strip: %d</p>\
+      <p>Desk strip: %d</p>\
+      <p>Bed color: %d</p>\
+      <p>Desk color: %d</p>\
+    </body>\
+  </html>",
+  
+  temp, humi, pres, termostat, heatMode, valve, c12, c5, b5, topBar, bedStrip, deskStrip, bedColor, deskColor);
+  
+            
+  server.send(200, "text/html", html);
 }

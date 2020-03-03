@@ -7,8 +7,6 @@
 #include <WiFiUdp.h>
 String topicStr;
 String payloadStr;
-int updateFreq = 3000;
-long updateAlarm;
 
 //MQTT server details
 const char* MQTT_SERVER = "tailor.cloudmqtt.com";
@@ -22,33 +20,31 @@ const char* password = "brygida71";
 WiFiClient wifiClient;
 PubSubClient client(wifiClient);
 
+//Reconnecting
+int wifiRecFreq = 20000;
+long wifiRecAlarm;
+int mqttRecFreq = 20000;
+long mqttRecAlarm;
+int wifiRecAtm = 0;
+int mqttRecAtm = 0;
+int wifiRec = 6; //After wifiRec times, give up reconnecting and restart esp
+int mqttRec = 6;
+
 void setup()
 {
-  pinMode(2, OUTPUT);
   pinMode(5, OUTPUT);
   pinMode(15, OUTPUT);
   pinMode(18, OUTPUT);
 
-  turnOff();
+  setGear(0);
   
   //MQTT
   client.setServer(MQTT_SERVER, MQTT_PORT);
   client.setCallback(callback);
 
-  //OTA update
-  Serial.begin(115200);
-  Serial.println("Booting");
+  //OTA update and WiFI
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
-  while (WiFi.waitForConnectResult() != WL_CONNECTED)
-  {
-    Serial.println("Connection Failed! Rebooting...");
-    digitalWrite(2, HIGH);
-    delay(3000);
-    digitalWrite(2, LOW);
-
-    ESP.restart();
-  }
 
   ArduinoOTA
   .onStart([]()
@@ -59,17 +55,13 @@ void setup()
     else // U_SPIFFS
       type = "filesystem";
   })
-
   .onEnd([]()
   {
-    Serial.println("\nEnd");
   })
-
   .onProgress([](unsigned int progress, unsigned int total)
   {
     Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
   })
-
   .onError([](ota_error_t error)
   {
     Serial.printf("Error[%u]: ", error);
@@ -78,31 +70,27 @@ void setup()
     else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
     else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
     else if (error == OTA_END_ERROR) Serial.println("End Failed");
-
-    digitalWrite(2, HIGH);
-    delay(3000);
-    digitalWrite(2, LOW);
-
-    ESP.restart();
   });
 
   ArduinoOTA.begin();
-  flash();
 }
 
 void loop()
 {
-  if (!client.loop())
+  conErrorHandle();
+  
+  if (WiFi.status() == WL_CONNECTED)
   {
-    Serial.print("Disconnected! ");
-    reconnect();
+    ArduinoOTA.handle();
   }
 
-  delay(50);
+  delay(150);
 }
 
 void callback(char* topic, byte* payload, unsigned int length)
 {
+  setGear(0); //Safety
+  
   topicStr = String(topic);
   payloadStr = "";
   for (int i = 0; i < length; i++)
@@ -110,22 +98,18 @@ void callback(char* topic, byte* payload, unsigned int length)
     payloadStr += (char)payload[i];
   }
   
-  turnOff();
   if(topicStr == "fan")
   {
     switch(payloadStr.toInt())
     {
       case 1:
-      Serial.println("ONE");
-        digitalWrite(5, HIGH);
+        setGear(1);
         break;
       case 2:
-        digitalWrite(15, LOW);
-        Serial.println("TWO");
+        setGear(2);
         break;
       case 3:
-        Serial.println("THREE");
-        digitalWrite(18, LOW);
+        setGear(3);
         break;
     }
   }
@@ -137,55 +121,82 @@ void callback(char* topic, byte* payload, unsigned int length)
 
 void reconnect()
 {
-  //Loop until we're reconnected
-  while (!client.connected())
+  //Create a random client ID
+  String clientId = "ESP32Client-";
+  clientId += String(random(0xffff), HEX);
+
+  // Attempt to connect
+  if (client.connect(clientId.c_str(), MQTT_USER, MQTT_PASSWORD))
   {
-    Serial.print("Attempting MQTT connection...");
-
-    //Create a random client ID
-    String clientId = "ESP32Client-";
-    clientId += String(random(0xffff), HEX);
-
-    // Attempt to connect
-    if (client.connect(clientId.c_str(), MQTT_USER, MQTT_PASSWORD))
-    {
-      //Subscribe list
-      client.subscribe("fan");
-      client.subscribe("terminal");
-    }
-    else
-    {
-      delay(5000);
-    }
+    //Subscribe list
+    client.subscribe("fan");
+    client.subscribe("terminal");
   }
 }
 
-void turnOff()
+void setGear(int t)
 {
-  digitalWrite(5, LOW);
-  digitalWrite(15, HIGH);
-  digitalWrite(18, HIGH);
+  switch(t)
+  {
+    case 0:
+      digitalWrite(5, LOW);
+      digitalWrite(15, HIGH);
+      digitalWrite(18, HIGH);
+      break;
+      
+    case 1:
+      setGear(0);
+      digitalWrite(5, HIGH);
+      break;
+      
+    case 2:
+      setGear(0);
+      digitalWrite(15, LOW);
+      break;
+      
+    case 3:
+      setGear(0);
+      digitalWrite(18, LOW);
+      break;
+  }
 }
 
-void flash()
+void conErrorHandle()
 {
-  digitalWrite(2, HIGH);
-  delay(200);
-  digitalWrite(2, LOW);
-  delay(200);
-  digitalWrite(2, HIGH);
-  delay(200);
-  digitalWrite(2, LOW);
-  delay(200);
-  digitalWrite(2, HIGH);
-  delay(200);
-  digitalWrite(2, LOW);
-  delay(200);
-  digitalWrite(2, HIGH);
-  delay(200);
-  digitalWrite(2, LOW);
-  delay(200);
-  digitalWrite(2, HIGH);
-  delay(200);
-  digitalWrite(2, LOW);
+  //Check mqtt connection --------------------------------------------------------------------------------
+  if (client.loop())
+  {
+    mqttRecAtm = 0; //If fine reset reconnection atempts counter
+  }
+  else if (millis() >= mqttRecAlarm)
+  {
+    mqttRecAlarm = millis() + mqttRecFreq;
+    if (mqttRecAtm >= mqttRec) //After mqttRec tries restart esp.
+    {
+      ESP.restart();
+    }
+    else //Reconnect
+    {
+      mqttRecAtm++;
+      reconnect();
+    }
+  }
+  //Check wifi connection --------------------------------------------------------------------------------
+  if (WiFi.status() == WL_CONNECTED)
+  {
+    wifiRecAtm = 0; //If fine reset reconnection atempts counter
+  }
+  else if (millis() >= wifiRecAlarm) //Wait for wifiRecAlarm
+  {
+    wifiRecAlarm = millis() + wifiRecFreq;
+    if (wifiRecAtm >= wifiRec) //After wifiRec tries restart esp.
+    {
+      ESP.restart();
+    }
+    else //Reconnect
+    {
+      wifiRecAtm++;
+      WiFi.begin(ssid, password);
+    }
+  }
 }
