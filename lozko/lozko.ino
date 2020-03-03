@@ -160,8 +160,10 @@ void callback(char* topic, byte* payload, unsigned int length)
 
   if (topicStr == "bedColor")
   {
-    bedColor = payloadStr.toInt();
+    payloadStr.toCharArray(charArray, 8);
+    bedColor = toIntColor(charArray);
     colorWipe(bedColor, 1, 0, 101);
+    
     eepromPut();
   }
   //--------------------------------------------------------------------------------
@@ -230,10 +232,6 @@ void callback(char* topic, byte* payload, unsigned int length)
     }
     eepromPut();
   }
-  else if (topicStr == "update")
-  {
-    pubStat();
-  }
 }
 
 void reconnect()
@@ -257,19 +255,6 @@ void reconnect()
   }
 }
 
-//Corrupted
-void pubStat()
-{
-//  String(bedColor).toCharArray(charArray, 8);
-//  client.publish("bedColor", charArray);
-//
-//  String(heatMode).toCharArray(charArray, 8);
-//  client.publish("heatControl", charArray);
-//
-//  String(termostat).toCharArray(charArray, 8);
-//  client.publish("termostat", charArray);
-}
-
 void colorWipe(uint32_t color, int wait, int first, int last)
 {
   for (int i = first; i < last; i++)
@@ -279,6 +264,28 @@ void colorWipe(uint32_t color, int wait, int first, int last)
   
   delay(wait);
   strip.show();
+}
+
+int toIntColor(char hexColor[])
+{
+  int base = 1;
+  int color = 0;
+
+  for (int i = 6; i >= 1; i--)
+  {
+    if (hexColor[i] >= '0' && hexColor[i] <= '9')
+    {
+      color += (hexColor[i] - 48) * base;
+      base = base * 16;
+    }
+    else if (hexColor[i] >= 'A' && hexColor[i] <= 'F')
+    {
+      color += (hexColor[i] - 55) * base;
+      base = base * 16;
+    }
+  }
+
+  return color;
 }
 
 void setHeatMode(int m, bool pub)

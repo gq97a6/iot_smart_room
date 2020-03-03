@@ -81,8 +81,8 @@ float temp;
 int humi;
 int pres;
 //--------------------
-float termostat;
-String heatMode;
+float termostat = 10;
+String heatMode = "cold";
 bool valve;
 //--------------------
 bool c12;
@@ -92,8 +92,8 @@ bool b5;
 bool topBar;
 bool bedStrip;
 bool deskStrip;
-int bedColor;
-int deskColor;
+int bedColor = 255;
+int deskColor = 255; //FF 80 2D do 167 444 93
 
 int i; int ii; char charArray[8]; int poten;
 void setup()
@@ -369,12 +369,14 @@ void callback(char* topic, byte* payload, unsigned int length)
 //--------------------------------------------------------------------------------
   else if (topicStr == "bedColor")
   {
-    bedColor = payloadStr.toInt();
+    payloadStr.toCharArray(charArray, 8);
+    bedColor = toIntColor(charArray);
   }
 //--------------------------------------------------------------------------------
   else if (topicStr == "deskColor")
-  {,0+*3cm..vmcvgaeq  aZQ EVN.0
-    deskColor = payloadStr.toICt();
+  {
+    payloadStr.toCharArray(charArray, 8);
+    deskColor = toIntColor(charArray);
     colorWipe(deskColor, 10, 0, 80);
   }
 }
@@ -416,6 +418,28 @@ void colorWipe(uint32_t color, int wait, int first, int last)
   
   stripL.show();
   stripP.show();
+}
+
+int toIntColor(char hexColor[])
+{
+  int base = 1;
+  int color = 0;
+
+  for (int i = 6; i >= 1; i--)
+  {
+    if (hexColor[i] >= '0' && hexColor[i] <= '9')
+    {
+      color += (hexColor[i] - 48) * base;
+      base = base * 16;
+    }
+    else if (hexColor[i] >= 'A' && hexColor[i] <= 'F')
+    {
+      color += (hexColor[i] - 55) * base;
+      base = base * 16;
+    }
+  }
+
+  return color;
 }
 
 void buttonsHandle()
@@ -509,7 +533,7 @@ void httpServer()
 
   server.on("/", []()
   {
-    if (!server.authenticate(www_username, www_password))
+    if (server.authenticate(www_username, www_password))
     {
       //Digest Auth Method with Custom realm and Failure Response
       return server.requestAuthentication(DIGEST_AUTH, www_realm, authFailResponse);
@@ -517,6 +541,7 @@ void httpServer()
    
     mainPage();
   });
+  
   server.onNotFound(notFoundPage);
   
   server.begin();
@@ -525,6 +550,12 @@ void httpServer()
 //-------------------------------------------------------------------------------- http pages
 void notFoundPage()
 {
+  if (!server.authenticate(www_username, www_password))
+  {
+    //Digest Auth Method with Custom realm and Failure Response
+    return server.requestAuthentication(DIGEST_AUTH, www_realm, authFailResponse);
+  }
+  
   String message = "File Not Found\n\n";
   message += "URI: ";
   message += server.uri();
@@ -552,7 +583,7 @@ void mainPage()
       <meta http-equiv='refresh' content='99999'/>\
       <title>ESP32 Demo</title>\
       <style>\
-        body { background-color: #cccccc; font-family: Arial, Helvetica, Sans-Serif; Color: #000088; }\
+        body { background-color: black; font-family: Arial, Helvetica, Sans-Serif; Color: white; }\
       </style>\
     </head>\
     <body>\
@@ -564,13 +595,13 @@ void mainPage()
       <p>Heat mode: %s</p>\
       <p>Valve: %d</p>\
       </br></br>\
-      <p>12V: %d</p>\
-      <p>5V: %d</p>\
-      <p>5V (bed): %d</p>\
+      <p>12V: <a href='/'>%d</a> </p>\
+      <p>5V: <a href='/'>%d</a> </p>\
+      <p>5V (bed): <a href='/'>%d</a> </p>\
       </br></br>\
-      <p>Top bar: %d</p>\
-      <p>Bed strip: %d</p>\
-      <p>Desk strip: %d</p>\
+      <p>Top bar: <a href='/'>%d</a> </p>\
+      <p>Bed strip: <a href='/'>%d</a> </p>\
+      <p>Desk strip: <a href='/'>%d</a> </p>\
       <p>Bed color: %d</p>\
       <p>Desk color: %d</p>\
     </body>\
