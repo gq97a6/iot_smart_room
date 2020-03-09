@@ -48,13 +48,14 @@ IPAddress ip (8, 8, 8, 8); // The remote ip to ping
 
 //Variables
 bool state; //Button state
-int buttons[5][5] = 
-{{27, 0, 0, 0, 0}, 
-{26, 0, 0, 0, 0}, 
-{25, 0, 0, 0, 0}, 
-{33, 0, 0, 0, 0}, 
+double buttonsTs[5] {0, 0, 0, 0, 0}; //Timestamp to last change
+int buttons[5][5] =
+{{27, 0, 0, 0, 0},
+{26, 0, 0, 0, 0},
+{25, 0, 0, 0, 0},
+{33, 0, 0, 0, 0},
 {32, 0, 0, 0, 0}};
-//Pin, state, ascending, descending, clicked
+//Pin, state, filtered, ascending, descending
 
 //Callback
 String topicStr;
@@ -175,7 +176,7 @@ void setup()
 }
 
 void loop()
-{
+{    
   server.handleClient(); //HTML maintenance
   conErrorHandle(); //OTA and connection maintenance
 
@@ -201,11 +202,11 @@ void loop()
     String(bme.readPressure() / 100.0F).toCharArray(charArray, 8);
     client.publish("pres", charArray);
   }
-
+  
   buttonsHandle();
   
   //Top bar control
-  if(buttons[3][2] && !buttons[0][1] && !buttons[1][1] && !buttons[2][1] && !buttons[4][1] && millis() >= topBarButtonAlarm)
+  if(buttons[3][3] && !buttons[0][2] && !buttons[1][2] && !buttons[2][2] && !buttons[4][2] && millis() >= topBarButtonAlarm)
   {
     topBarButtonAlarm = millis() + topBarButtonFreq;
     
@@ -224,7 +225,7 @@ void loop()
   }
 
   //Fan control //0(0) 1-160(1) 161-175(X) 176-335(2) 336-350(X) 351-511(3)
-  if(buttons[2][2] && !buttons[0][1] && !buttons[1][1] && !buttons[3][1] && !buttons[4][1])
+  if(buttons[2][3] && !buttons[0][2] && !buttons[1][2] && !buttons[3][2] && !buttons[4][2])
   {
     poten = analogRead(34);
     if(poten == 0)
@@ -246,7 +247,7 @@ void loop()
   }
   
   //Heating control
-  if(buttons[0][2] && !buttons[1][1] && !buttons[2][1] && !buttons[3][1] && !buttons[4][1] && millis() >= heatButtonAlarm)
+  if(buttons[0][3] && !buttons[1][2] && !buttons[2][2] && !buttons[3][2] && !buttons[4][2] && millis() >= heatButtonAlarm)
   {
     poten = analogRead(34);
     if(poten == 0)
@@ -268,12 +269,12 @@ void loop()
   }
 
   //Restart
-  if(analogRead(34) == 0 && buttons[0][1] && buttons[1][1] && buttons[2][1] && buttons[3][1] && buttons[4][1])
+  if(analogRead(34) == 0 && buttons[0][2] && buttons[1][2] && buttons[2][2] && buttons[3][2] && buttons[4][1])
   {
     ESP.restart();
   }
   
-  delay(18);
+  delay(10);
 }
 
 void callback(char* topic, byte* payload, unsigned int length)
@@ -422,6 +423,17 @@ void colorWipe(uint32_t color, int wait, int first, int last)
   
   stripL.show();
   stripP.show();
+
+  for (int i = first; i < last; i++)
+  {
+    stripL.setPixelColor(i, color);
+    stripP.setPixelColor(i, color);
+  
+    delay(wait);
+  }
+  
+  stripL.show();
+  stripP.show();
 }
 
 int toIntColor(char hexColor[])
@@ -445,28 +457,35 @@ int toIntColor(char hexColor[])
 
   return color;
 }
-
+      
 void buttonsHandle()
 {
   for (i = 0; i < 5; i++)
   {
     state = !digitalRead(buttons[i][0]);
 
-    for (ii = 2; ii <= 4; ii++)
-    {
-      buttons[i][ii] = 0;
-    }
+    //Clear states
+    buttons[i][3] = 0;
+    buttons[i][4] = 0;
     
     if (buttons[i][1] != state)
     {
-      buttons[i][1] = state;
+      buttons[i][1] = state; //Real state
+      buttonsTs[i] = millis(); //Timestamp to last change
+    }
+
+    if(millis() - buttonsTs[i] > 20 && buttonsTs[i] != 0)
+    {
+      buttonsTs[i] = 0;
+      buttons[i][2] = state; //Filtered state
+      
       if (state)
       {
-        buttons[i][2] = 1; //Ascending
+        buttons[i][3] = 1; //Ascending
       }
       else
       {
-        buttons[i][3] = 1; //Descending
+        buttons[i][4] = 1; //Descending
       }
     }
   }

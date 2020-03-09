@@ -124,11 +124,6 @@ void loop()
     ArduinoOTA.handle();
   }
 
-  if (millis() >= wifiRecAlarm) //Wait for wifiRecAlarm
-  {
-    wifiRecAlarm = millis() + wifiRecFreq;
-  }
-
   if (heatMode == 2) //Auto
   {
     if (millis() >= tempReceivedAlarm || temperature > termostat - 0.3)
