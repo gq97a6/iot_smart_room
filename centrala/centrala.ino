@@ -95,8 +95,6 @@ bool c5;
 bool b5;
 //--------------------
 bool topBar;
-bool bedStrip;
-bool deskStrip;
 int bedColor = 255;
 int deskColor = 255; //FF 80 2D do 167 444 93
 
@@ -213,12 +211,14 @@ void loop()
     if(topBar)
     {
       topBar = 0;
+      c12 = 0;
       digitalWrite(4, HIGH);
       client.publish("c12", "0");
     }
     else
     {
       topBar = 1;
+      c12 = 1;
       digitalWrite(4, LOW);
       client.publish("c12", "1");
     }
@@ -334,39 +334,19 @@ void callback(char* topic, byte* payload, unsigned int length)
     b5 = payloadStr.toInt();
   }
 //--------------------------------------------------------------------------------
-  else if (topicStr == "bedStrip")
-  {
-    bedStrip = payloadStr.toInt();
-  }
-//--------------------------------------------------------------------------------
-  else if (topicStr == "deskStrip")
-  {
-    if (payloadStr == "1")
-    {
-      deskStrip = 1;
-      client.publish("c5", "1");
-      digitalWrite(15, LOW);
-      colorWipe(deskColor, 2, 0, 80);
-    }
-    else if (payloadStr == "0")
-    {
-      deskStrip = 0;
-      client.publish("c5", "0");
-      digitalWrite(15, HIGH);
-    }
-  }
-//--------------------------------------------------------------------------------
   else if (topicStr == "topBar")
   {
     if (payloadStr == "1")
     {
       topBar = 1;
+      c12 = 1;
       client.publish("c12", "1");
       digitalWrite(4, LOW);
     }
     else if (payloadStr == "0")
     {
       topBar = 0;
+      c12 = 0;
       client.publish("c12", "0");
       digitalWrite(4, HIGH);
     }
@@ -594,6 +574,9 @@ void httpServer()
   });
   
   server.onNotFound(notFoundPage);
+  server.on("/toggleTopBar", toggleTopBar);
+  server.on("/toggleC5", toggleC5);
+  server.on("/toggleB5", toggleB5);
   
   server.begin();
 }
@@ -615,11 +598,6 @@ void notFoundPage()
   message += "\nArguments: ";
   message += server.args();
   message += "\n";
-
-  for (uint8_t i = 0; i < server.args(); i++)
-  {
-    message += " " + server.argName(i) + ": " + server.arg(i) + "\n";
-  }
 
   server.send(404, "text/plain", message);
 }
@@ -646,20 +624,77 @@ void mainPage()
       <p>Heat mode: %s</p>\
       <p>Valve: %d</p>\
       </br></br>\
-      <p>12V: <a href='/'>%d</a> </p>\
-      <p>5V: <a href='/'>%d</a> </p>\
-      <p>5V (bed): <a href='/'>%d</a> </p>\
+      <p>12V: <a href='toggleTopBar'>%d</a> </p>\
+      <p>5V: <a href='toggleC5'>%d</a> </p>\
+      <p>5V (bed): <a href='toggleB5'>%d</a> </p>\
       </br></br>\
-      <p>Top bar: <a href='/'>%d</a> </p>\
-      <p>Bed strip: <a href='/'>%d</a> </p>\
-      <p>Desk strip: <a href='/'>%d</a> </p>\
+      <p>Top bar: <a href='toggleTopBar'>%d</a> </p>\
       <p>Bed color: %d</p>\
       <p>Desk color: %d</p>\
     </body>\
   </html>",
   
-  temp, humi, pres, termostat, heatMode, valve, c12, c5, b5, topBar, bedStrip, deskStrip, bedColor, deskColor);
+  temp, humi, pres, termostat, heatMode, valve, c12, c5, b5, topBar, bedColor, deskColor);
   
             
+  server.send(200, "text/html", html);
+}
+
+void toggleTopBar()
+{
+  topBar = !topBar;
+  if (topBar)
+  {
+    c12 = 1;
+    client.publish("c12", "1");
+    client.publish("topBar", "1");
+    digitalWrite(4, LOW);
+  }
+  else
+  {
+    c12 = 0;
+    client.publish("c12", "0");
+    client.publish("topBar", "0");
+    digitalWrite(4, HIGH);
+  }
+
+  redirect();
+}
+
+void toggleC5()
+{
+  c5 = !c5;
+  if (c5)
+  {
+    digitalWrite(15, LOW);
+    client.publish("c5", "1");
+  }
+  else
+  {
+    digitalWrite(15, HIGH);
+    client.publish("c5", "0");
+  }
+    
+  redirect();
+}
+
+void toggleB5()
+{
+  b5 = !b5;
+  if (b5)
+  {
+    client.publish("b5", "1");
+  }
+  else
+  {
+    client.publish("b5", "0");
+  }
+  
+  redirect();
+}
+
+void redirect()
+{
+  char html[68] = "<meta http-equiv='Refresh' content='0; url=/'/>";
   server.send(200, "text/html", html);
 }
