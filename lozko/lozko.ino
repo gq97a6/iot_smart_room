@@ -3,8 +3,10 @@
 Preferences preferences;
 
 //Strip
-#include <Adafruit_NeoPixel.h>
-Adafruit_NeoPixel strip(101, 13, NEO_GRB + NEO_KHZ800);
+#include <FastLED.h>
+CRGB strip[101];
+#define FRAMES_PER_SECOND 120
+uint8_t gHue = 0;
 
 //MQTT and WiFI
 #include <SPI.h>
@@ -38,6 +40,7 @@ int heatMode; //Cold(0), Heat(1), Auto(2), Heat up(3)
 float temperature;
 float termostat;
 bool valveS;
+byte anim;
 
 //Alarms
 int heatUpFreq = 3 * 60 * 1000;
@@ -62,9 +65,8 @@ void setup()
   preferences.begin("memory", false);
   eepromGet();
 
-  strip.begin();
-  strip.show();
-  strip.setBrightness(255);
+  FastLED.addLeds<WS2812B,13,GRB>(strip, 101).setCorrection(TypicalLEDStrip);
+  FastLED.setBrightness(255);
 
   pinMode(heatPin, OUTPUT);
   pinMode(supplyPin, OUTPUT);
@@ -142,6 +144,19 @@ void loop()
       setHeatMode(0, 1);
     }
   }
+
+  //Led strip
+  Fire2012();
+  rainbow();
+  confetti();
+  sinelon();
+  bpm();
+
+  FastLED.delay(1000 / FRAMES_PER_SECOND);
+  EVERY_N_MILLISECONDS(20)
+  {
+    gHue++;
+  }
 }
 
 void callback(char* topic, byte* payload, unsigned int length)
@@ -157,7 +172,7 @@ void callback(char* topic, byte* payload, unsigned int length)
   {
     payloadStr.toCharArray(charArray, 8);
     bedColor = toIntColor(charArray);
-    colorWipe(bedColor, 1, 0, 101);
+    colorWipe(bedColor, 20, 0, 101);
     
     eepromPut();
   }
@@ -227,6 +242,10 @@ void callback(char* topic, byte* payload, unsigned int length)
     }
     eepromPut();
   }
+  else if (topicStr == "bedAnim")
+  {
+    anim = payloadStr.toInt();
+  }
 }
 
 void reconnect()
@@ -247,6 +266,7 @@ void reconnect()
     client.subscribe("b5");
     client.subscribe("terminal");
     client.subscribe("update");
+    client.subscribe("bedAnim");
   }
 }
 
@@ -254,12 +274,141 @@ void colorWipe(uint32_t color, int wait, int first, int last)
 {
   for (int i = first; i < last; i++)
   {
-    strip.setPixelColor(i, color);
+    if(i<101)
+    {
+      strip[i] = color;
+    }
+    FastLED.show();
+    
+    delay(wait);
   }
-  
-  delay(wait);
-  strip.show();
 }
+
+//-------------------------------------------------------------------------------- Animacje
+// Fire2012 by Mark Kriegsman, July 2012
+// as part of "Five Elements" shown here: http://youtu.be/knWiGsmgycY
+
+// This basic one-dimensional 'fire' simulation works roughly as follows:
+// There's a underlying array of 'heat' cells, that model the temperature
+// at each point along the line.  Every cycle through the simulation,
+// four steps are performed:
+//  1) All cells cool down a little bit, losing heat to the air
+//  2) The heat from each cell drifts 'up' and diffuses a little
+//  3) Sometimes randomly new 'sparks' of heat are added at the bottom
+//  4) The heat from each cell is rendered as a color into the leds array
+//     The heat-to-color mapping uses a black-body radiation approximation.
+
+// Temperature is in arbitrary units from 0 (cold black) to 255 (white hot).
+// This simulation scales it self a bit depending on NUM_LEDS; it should look
+// "OK" on anywhere from 20 to 100 LEDs without too much tweaking.
+
+// I recommend running this simulation at anywhere from 30-100 frames per second,
+// meaning an interframe delay of about 10-35 milliseconds.
+
+// Looks best on a high-density LED setup (60+ pixels/meter).
+
+// There are two main parameters you can play with to control the look and
+// feel of your fire: COOLING (used in step 1 above), and SPARKING (used
+// in step 3 above).
+
+// COOLING: How much does the air cool as it rises?
+// Less cooling = taller flames.  More cooling = shorter flames.
+// Default 50, suggested range 20-100
+#define COOLING  55
+
+// SPARKING: What chance (out of 255) is there that a new spark will be lit?
+// Higher chance = more roaring fire.  Lower chance = more flickery fire.
+// Default 120, suggested range 50-200.
+#define SPARKING 120
+#define NUM_LEDS  101
+
+void Fire2012()
+{
+  if (anim == 5)
+  {
+    // Array of temperature readings at each simulation cell
+    static byte heat[NUM_LEDS];
+
+    // Step 1. Cool down every cell a little
+    for ( int i = 0; i < NUM_LEDS; i++)
+    {
+      heat[i] = qsub8( heat[i],  random8(0, ((COOLING * 10) / NUM_LEDS) + 2));
+    }
+
+    // Step 2. Heat from each cell drifts 'up' and diffuses a little
+    for ( int k = NUM_LEDS - 1; k >= 2; k--)
+    {
+      heat[k] = (heat[k - 1] + heat[k - 2] + heat[k - 2] ) / 3;
+    }
+
+    // Step 3. Randomly ignite new 'sparks' of heat near the bottom
+    if ( random8() < SPARKING )
+    {
+      int y = random8(7);
+      heat[y] = qadd8( heat[y], random8(160, 255) );
+    }
+
+    // Step 4. Map from heat cells to LED colors
+    for ( int j = 0; j < NUM_LEDS; j++)
+    {
+      CRGB color = HeatColor(heat[j]);
+      strip[j] = color;
+    }
+    
+    FastLED.show();
+  }
+}
+
+void rainbow()
+{
+  if (anim == 1)
+  {
+    fill_rainbow(strip, 101, gHue, 7);
+    FastLED.show();    
+  }
+}
+
+void confetti()
+{
+  if (anim == 2)
+  {
+    fadeToBlackBy( strip, 101, 10);
+    int pos = random16(101);
+    strip[pos] += CHSV( gHue + random8(64), 200, 255);
+    
+    FastLED.show();
+  }
+}
+
+void sinelon()
+{
+  if (anim == 3)
+  {
+    fadeToBlackBy( strip, 101, 20);
+    int pos = beatsin16( 13, 0, 101 - 1 );
+    strip[pos] += CHSV( gHue, 255, 192);
+
+    FastLED.show();
+  }
+}
+
+void bpm()
+{
+  uint8_t BeatsPerMinute = 62;
+  uint8_t beat = beatsin8( BeatsPerMinute, 64, 255);
+
+  if (anim == 4)
+  {
+    CRGBPalette16 palette = PartyColors_p;
+    for ( int i = 0; i < 101; i++) //9948
+    {
+      strip[i] = ColorFromPalette(palette, gHue + (i * 2), beat - gHue + (i * 10));
+    }
+
+    FastLED.show();
+  }
+}
+//--------------------------------------------------------------------------------
 
 int toIntColor(char hexColor[])
 {

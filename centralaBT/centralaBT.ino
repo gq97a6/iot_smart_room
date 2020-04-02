@@ -1,4 +1,58 @@
-//EEPROM
+//-------------------------------------------------------------------------------- Bluetooth
+#include <BLEDevice.h>
+#include <BLEServer.h>
+#include <BLEUtils.h>
+#include <BLE2902.h>
+
+BLEServer* bleServer = NULL;
+
+BLECharacteristic* terminal = NULL;
+BLECharacteristic* pressure = NULL;
+BLECharacteristic* humidity = NULL;
+BLECharacteristic* temperature = NULL;
+
+bool deviceConnected = false;
+
+#define SERVICE_UUID "7d8c4032-c42f-4d77-a490-3de70b93e884"
+
+#define TERMINAL_CHAR_UUID "c25c5e15-72e8-47f7-b250-8a137a62b431"
+#define TEMP_CHAR_UUID "fe04b216-8ea3-4739-8a72-4661c7645387"
+#define HUMI_CHAR_UUID "2d07ce59-3d7d-460b-8c35-887d68766cd6"
+#define PRES_CHAR_UUID "d2126ded-bddb-4766-b445-db3d4f089986"
+
+class MyServerCallbacks: public BLEServerCallbacks
+{
+    void onConnect(BLEServer* bleServer)
+    {
+      deviceConnected = true;
+    };
+
+    void onDisconnect(BLEServer* bleServer)
+    {
+      deviceConnected = false;
+
+      delay(500); // give the bluetooth stack the chance to get things ready
+      bleServer->startAdvertising(); // restart advertising
+    }
+};
+
+class charCallback: public BLECharacteristicCallbacks
+{
+  void onWrite(BLECharacteristic *terminal)
+  {
+    std::string value = terminal->getValue();
+
+    if (value.length() > 0)
+    {
+      for (int i = 0; i < value.length(); i++)
+      {
+        Serial.print(value[i]);
+      }
+    }
+  }
+};
+
+//-------------------------------------------------------------------------------- EEPROM
 #include <Preferences.h>
 Preferences preferences;
 
@@ -21,19 +75,11 @@ Adafruit_BME280 bme;
 //MQTT and WiFI
 #include <SPI.h>
 #include <WiFi.h>
-#include <PubSubClient.h>
-#include <ESP32Ping.h>
-
-//UDP
-#include "WiFi.h"
-#include "AsyncUDP.h"
-AsyncUDP udp;
-
-//OTA
-#include <WiFi.h>
 #include <ESPmDNS.h>
-#include <WiFiUdp.h>
 #include <ArduinoOTA.h>
+#include <PubSubClient.h>
+#include <WiFiUdp.h>
+#include <ESP32Ping.h>
 
 //MQTT server details
 const char* MQTT_SERVER = "tailor.cloudmqtt.com";
@@ -44,10 +90,6 @@ const char* MQTT_SERVER = "tailor.cloudmqtt.com";
 //WiFi details
 const char* ssid = "2.4G-Vectra-WiFi-8F493A";
 const char* password = "brygida71";
-
-const char* ssidAP = "myAP";
-const char* passwordAP = "!<ZN'u!@WNAHP<2S";
-
 WiFiClient wifiClient;
 PubSubClient client(wifiClient);
 IPAddress ip (8, 8, 8, 8); // The remote ip to ping
@@ -56,11 +98,12 @@ IPAddress ip (8, 8, 8, 8); // The remote ip to ping
 bool state; //Button state
 double buttonsTs[5] {0, 0, 0, 0, 0}; //Timestamp to last change
 int buttons[5][5] =
-{{27, 0, 0, 0, 0},
-{26, 0, 0, 0, 0},
-{25, 0, 0, 0, 0},
-{33, 0, 0, 0, 0},
-{32, 0, 0, 0, 0}};
+{ {27, 0, 0, 0, 0},
+  {26, 0, 0, 0, 0},
+  {25, 0, 0, 0, 0},
+  {33, 0, 0, 0, 0},
+  {32, 0, 0, 0, 0}
+};
 //Pin, state, filtered, ascending, descending
 
 //Callback
@@ -88,9 +131,9 @@ int wifiRec = 5; //After wifiRec times, give up reconnecting and restart esp
 int mqttRec = 5;
 
 //Status
-float temp;
-int humi;
-int pres;
+char temp[8];
+char humi[8];
+char pres[8];
 //--------------------
 float termostat = 10;
 String heatMode = "cold";
@@ -100,15 +143,12 @@ bool c12;
 bool c5;
 bool b5;
 //--------------------
-String wenTerminal;
-String lozTerminal;
-//--------------------
 bool topBar;
 int bedColor = 255;
 int deskColor = 255;
 byte anim;
 
-int i; int ii; char charArray[8]; int poten; char cmd[12];
+int i; int ii; char charArray[8]; byte byteArray[8]; int poten;
 void setup()
 {
   analogReadResolution(2);
@@ -120,16 +160,16 @@ void setup()
   digitalWrite(15, HIGH);
   digitalWrite(4, HIGH);
 
-  for(i = 0; i<=4; i++)
+  for (i = 0; i <= 4; i++)
   {
     pinMode(buttons[i][0], INPUT_PULLUP);
   }
   pinMode(34, INPUT); //Potn
 
-  FastLED.addLeds<WS2812B,18,GRB>(stripL, 78).setCorrection(TypicalLEDStrip);
-  FastLED.addLeds<WS2812B,5,GRB>(stripP, 78).setCorrection(TypicalLEDStrip);
+  FastLED.addLeds<WS2812B, 18, GRB>(stripL, 78).setCorrection(TypicalLEDStrip);
+  FastLED.addLeds<WS2812B, 5, GRB>(stripP, 78).setCorrection(TypicalLEDStrip);
   FastLED.setBrightness(255);
-  
+
   bme.begin();
 
   //MQTT
@@ -139,10 +179,7 @@ void setup()
   //OTA programing and WiFI
   Serial.begin(115200);
   Serial.println("Booting");
-
-  Serial.begin(115200);
-  WiFi.mode(WIFI_AP_STA);
-  WiFi.softAP(ssidAP, passwordAP, 3, 1);
+  WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
 
   ArduinoOTA
@@ -178,29 +215,7 @@ void setup()
     ESP.restart();
   });
 
-  if(udp.listen(54091))
-  {
-    udp.onPacket([](AsyncUDPPacket packet)
-    {
-      String adr = "";
-      adr += (char)packet.data()[0];
-      adr += (char)packet.data()[1];
-      adr += (char)packet.data()[2];
-
-      if(adr == "cen")
-      {
-        String cmd = "";
-        for (int i = 3; i < packet.length(); i++)
-        {
-          cmd += (char)packet.data()[i];
-        }
-        udpCallback(cmd);
-      }
-      
-      //packet.printf("Got %u bytes of data", packet.length());
-    });
-  }
-  
+  btSetup();
   ArduinoOTA.begin();
 }
 
@@ -208,37 +223,50 @@ void loop()
 {
   conErrorHandle(); //OTA and connection maintenance
 
-  if(WiFi.status() == WL_CONNECTED)
+  if (WiFi.status() == WL_CONNECTED)
   {
     ArduinoOTA.handle();
   }
 
-  temp = bme.readTemperature();
-  humi = bme.readHumidity();
-  pres = bme.readPressure() / 100.0F;
+  String(bme.readTemperature()).toCharArray(temp, 8);
+  String(bme.readHumidity()).toCharArray(humi, 8);
+  String(bme.readPressure() / 100.0F).toCharArray(pres, 8);
+  
+  for (int i = 0; i < 8; i++)
+  {
+    byteArray[i] = byte(temp[i]);
+  }
+  temperature->setValue(byteArray, 8);
+
+  for (int i = 0; i < 8; i++)
+  {
+    byteArray[i] = byte(humi[i]);
+  }
+  pressure->setValue(byteArray, 8);
+
+  for (int i = 0; i < 8; i++)
+  {
+    byteArray[i] = byte(pres[i]);
+  }
+  humidity->setValue(byteArray, 8);
 
   if (millis() >= updateAlarm)
   {
     updateAlarm = millis() + updateFreq;
-    
-    String(temp).toCharArray(charArray, 8);
-    client.publish("temp", charArray);
-    
-    String(humi).toCharArray(charArray, 8);
-    client.publish("humi", charArray);
-    
-    String(pres).toCharArray(charArray, 8);
-    client.publish("pres", charArray);
+
+    client.publish("temp", temp);
+    client.publish("humi", humi);
+    client.publish("pres", pres);
   }
-  
+
   buttonsHandle();
-  
+
   //Top bar control
-  if(buttons[3][3] && !buttons[0][2] && !buttons[1][2] && !buttons[2][2] && !buttons[4][2] && millis() >= topBarButtonAlarm)
+  if (buttons[3][3] && !buttons[0][2] && !buttons[1][2] && !buttons[2][2] && !buttons[4][2] && millis() >= topBarButtonAlarm)
   {
     topBarButtonAlarm = millis() + topBarButtonFreq;
-    
-    if(topBar)
+
+    if (topBar)
     {
       topBar = 0;
       c12 = 0;
@@ -255,51 +283,51 @@ void loop()
   }
 
   //Fan control //0(0) 1-160(1) 161-175(X) 176-335(2) 336-350(X) 351-511(3)
-  if(buttons[2][3] && !buttons[0][2] && !buttons[1][2] && !buttons[3][2] && !buttons[4][2])
+  if (buttons[2][3] && !buttons[0][2] && !buttons[1][2] && !buttons[3][2] && !buttons[4][2])
   {
     poten = analogRead(34);
-    if(poten == 0)
+    if (poten == 0)
     {
       client.publish("fan", "0");
     }
-    else if(poten >= 1 && poten <= 160)
+    else if (poten >= 1 && poten <= 160)
     {
       client.publish("fan", "1");
     }
-    else if(poten >= 176 && poten <= 335)
+    else if (poten >= 176 && poten <= 335)
     {
       client.publish("fan", "2");
     }
-    else if(poten >= 351 && poten <= 511)
+    else if (poten >= 351 && poten <= 511)
     {
       client.publish("fan", "3");
     }
   }
-  
+
   //Heating control
-  if(buttons[0][3] && !buttons[1][2] && !buttons[2][2] && !buttons[3][2] && !buttons[4][2] && millis() >= heatButtonAlarm)
+  if (buttons[0][3] && !buttons[1][2] && !buttons[2][2] && !buttons[3][2] && !buttons[4][2] && millis() >= heatButtonAlarm)
   {
     poten = analogRead(34);
-    if(poten == 0)
+    if (poten == 0)
     {
       client.publish("heatControl", "cold");
     }
-    else if(poten >= 1 && poten <= 160)
+    else if (poten >= 1 && poten <= 160)
     {
       client.publish("heatControl", "auto");
     }
-    else if(poten >= 176 && poten <= 335)
+    else if (poten >= 176 && poten <= 335)
     {
       client.publish("heatControl", "heatup");
     }
-    else if(poten >= 351 && poten <= 511)
+    else if (poten >= 351 && poten <= 511)
     {
       client.publish("heatControl", "heat");
     }
   }
 
   //Restart
-  if(analogRead(34) == 0 && buttons[0][2] && buttons[1][2] && buttons[2][2] && buttons[3][2] && buttons[4][1])
+  if (analogRead(34) == 0 && buttons[0][2] && buttons[1][2] && buttons[2][2] && buttons[3][2] && buttons[4][1])
   {
     ESP.restart();
   }
@@ -326,22 +354,22 @@ void callback(char* topic, byte* payload, unsigned int length)
   {
     payloadStr += (char)payload[i];
   }
-  
+
   if (topicStr == "termostat")
   {
     termostat = payloadStr.toInt();
   }
-//--------------------------------------------------------------------------------
+  //--------------------------------------------------------------------------------
   else if (topicStr == "heatMode")
   {
     heatMode = payloadStr;
   }
-//--------------------------------------------------------------------------------
+  //--------------------------------------------------------------------------------
   else if (topicStr == "valve")
   {
     valve = payloadStr.toInt();
   }
-//--------------------------------------------------------------------------------
+  //--------------------------------------------------------------------------------
   else if (topicStr == "c12")
   {
     if (payloadStr == "1")
@@ -355,7 +383,7 @@ void callback(char* topic, byte* payload, unsigned int length)
       digitalWrite(4, HIGH);
     }
   }
-//--------------------------------------------------------------------------------
+  //--------------------------------------------------------------------------------
   else if (topicStr == "c5")
   {
     if (payloadStr == "1")
@@ -369,12 +397,12 @@ void callback(char* topic, byte* payload, unsigned int length)
       digitalWrite(15, HIGH);
     }
   }
-//--------------------------------------------------------------------------------
+  //--------------------------------------------------------------------------------
   else if (topicStr == "b5")
   {
     b5 = payloadStr.toInt();
   }
-//--------------------------------------------------------------------------------
+  //--------------------------------------------------------------------------------
   else if (topicStr == "topBar")
   {
     if (payloadStr == "1")
@@ -392,13 +420,13 @@ void callback(char* topic, byte* payload, unsigned int length)
       digitalWrite(4, HIGH);
     }
   }
-//--------------------------------------------------------------------------------
+  //--------------------------------------------------------------------------------
   else if (topicStr == "bedColor")
   {
     payloadStr.toCharArray(charArray, 8);
     bedColor = toIntColor(charArray);
   }
-//--------------------------------------------------------------------------------
+  //--------------------------------------------------------------------------------
   else if (topicStr == "deskColor")
   {
     payloadStr.toCharArray(charArray, 8);
@@ -444,7 +472,7 @@ void colorWipe(uint32_t color, int wait, int first, int last)
     stripL[i] = color;
     stripP[i] = color;
     FastLED.show();
-    
+
     delay(wait);
   }
 }
@@ -519,16 +547,16 @@ void Fire2012()
     {
       CRGB color = HeatColor(heat[j]);
 
-      if(j < 78)
+      if (j < 78)
       {
-        stripP[77-j] = color;
+        stripP[77 - j] = color;
       }
       else
       {
-        stripL[j-78] = color;
+        stripL[j - 78] = color;
       }
     }
-    
+
     FastLED.show();
   }
 }
@@ -539,7 +567,7 @@ void rainbow()
   {
     fill_rainbow(stripL, 78, gHue, 7);
     fill_rainbow(stripP, 78, gHue, 7);
-    
+
     FastLED.show();
   }
 }
@@ -553,7 +581,7 @@ void confetti()
     int pos = random16(78);
     stripP[pos] += CHSV( gHue + random8(64), 200, 255);
     stripL[pos] = stripP[pos];
-    
+
     FastLED.show();
   }
 }
@@ -564,11 +592,11 @@ void sinelon()
   {
     fadeToBlackBy( stripP, 78, 20);
     fadeToBlackBy( stripL, 78, 20);
-    
+
     int pos = beatsin16( 13, 0, 78 - 1 );
     stripP[pos] += CHSV( gHue, 255, 192);
     stripL[pos] = stripP[pos];
-    
+
     FastLED.show();
   }
 }
@@ -579,14 +607,14 @@ void bpm()
   {
     uint8_t BeatsPerMinute = 62;
     uint8_t beat = beatsin8( BeatsPerMinute, 64, 255);
-    
+
     CRGBPalette16 palette = PartyColors_p;
     for ( int i = 0; i < 78; i++) //9948
     {
       stripP[i] = ColorFromPalette(palette, gHue + (i * 2), beat - gHue + (i * 10));
       stripL[i] = stripP[i];
     }
-    
+
     FastLED.show();
   }
 }
@@ -613,7 +641,7 @@ int toIntColor(char hexColor[])
 
   return color;
 }
-      
+
 void buttonsHandle()
 {
   for (i = 0; i < 5; i++)
@@ -623,18 +651,18 @@ void buttonsHandle()
     //Clear states
     buttons[i][3] = 0;
     buttons[i][4] = 0;
-    
+
     if (buttons[i][1] != state)
     {
       buttons[i][1] = state; //Real state
       buttonsTs[i] = millis(); //Timestamp to last change
     }
 
-    if(millis() - buttonsTs[i] > 20 && buttonsTs[i] != 0)
+    if (millis() - buttonsTs[i] > 20 && buttonsTs[i] != 0)
     {
       buttonsTs[i] = 0;
       buttons[i][2] = state; //Filtered state
-      
+
       if (state)
       {
         buttons[i][3] = 1; //Ascending
@@ -677,17 +705,17 @@ void buttonsHandle()
 
 void conErrorHandle()
 {
-//-------------------------------------------------------------------------------- Check mqtt connection 
-  if(client.loop())
+  //-------------------------------------------------------------------------------- Check mqtt connection
+  if (client.loop())
   {
     mqttRecAtm = 0; //If fine reset reconnection atempts counter
   }
-  else if(millis() >= mqttRecAlarm)
+  else if (millis() >= mqttRecAlarm)
   {
     mqttRecAlarm = millis() + mqttRecFreq;
-    if(mqttRecAtm >= mqttRec) //After mqttRec tries restart esp.
+    if (mqttRecAtm >= mqttRec) //After mqttRec tries restart esp.
     {
-      ESP.restart(); 
+      ESP.restart();
     }
     else //Reconnect
     {
@@ -695,12 +723,19 @@ void conErrorHandle()
       reconnect();
     }
   }
-//-------------------------------------------------------------------------------- Check wifi connection 
- 
-  else if(millis() >= wifiRecAlarm) //Wait for wifiRecAlarm
+  //-------------------------------------------------------------------------------- Check wifi connection
+  if (WiFi.status() == WL_CONNECTED)
+  {
+    wifiRecAtm = 0; //If fine reset reconnection atempts counter
+  }
+  //  else if(Ping.ping(ip, 3); //Check internet connection
+  //  {
+  //
+  //  }
+  else if (millis() >= wifiRecAlarm) //Wait for wifiRecAlarm
   {
     wifiRecAlarm = millis() + wifiRecFreq;
-    if(wifiRecAtm >= wifiRec) //After wifiRec tries restart esp.
+    if (wifiRecAtm >= wifiRec) //After wifiRec tries restart esp.
     {
       ESP.restart();
     }
@@ -723,63 +758,28 @@ void flash()
   }
 }
 
-void udpCallback(String command)
+//-------------------------------------------------------------------------------- bleServer
+void btSetup()
 {
-  String parmA = "";
-  String parmB = "";
-  String parmC = "";
-  String parmD = "";
+  //-------------------------------------------------------------------------------- Create the BLE Device
+  BLEDevice::init("centrala");
+  //-------------------------------------------------------------------------------- Create the BLE Server
+  bleServer = BLEDevice::createServer();
+  bleServer->setCallbacks(new MyServerCallbacks());
+  //-------------------------------------------------------------------------------- Create the BLE Service
+  BLEService *centrala = bleServer->createService(SERVICE_UUID);
+  //-------------------------------------------------------------------------------- Create a BLE Characteristics
+  pressure = centrala->createCharacteristic(PRES_CHAR_UUID, BLECharacteristic::PROPERTY_READ);
+  humidity = centrala->createCharacteristic(HUMI_CHAR_UUID, BLECharacteristic::PROPERTY_READ);
+  temperature = centrala->createCharacteristic(TEMP_CHAR_UUID, BLECharacteristic::PROPERTY_READ);
 
-  //Create array
-  char cmd[40];
-  command.toCharArray(cmd, 40);
+  terminal = centrala->createCharacteristic(TERMINAL_CHAR_UUID, BLECharacteristic::PROPERTY_WRITE);
+  terminal->setCallbacks(new charCallback());
+  //-------------------------------------------------------------------------------- Start advertising
+  centrala->start();
 
-  //Slice array into 4 parameters, sample: prm1;prm2;prm3;prm4;
-  int parm = 0;
-  for (int i = 0; i < 20; i++)
-  {
-    if(cmd[i] == ';')
-    {
-      parm++;
-    }
-    else
-    {
-      switch(parm)
-      {
-        case 0:
-          parmA += cmd[i];
-          break;
-
-        case 1:
-          parmB += cmd[i];
-          break;
-
-        case 2:
-          parmC += cmd[i];
-          break;
-
-        case 3:
-          parmD += cmd[i];
-          break;
-          
-      }
-    }
-  }
-
-  if(parmA == "cwip")
-  {
-    for (int i = 0; i <= 77; i++)
-    {
-      stripL[i] = parmB.toInt();
-      stripP[i] = parmB.toInt();
-    }
-    FastLED.show();
-  }
-  else if(parmA == "setd")
-  {
-    stripL[parmC.toInt()] = parmB.toInt();
-    stripP[parmC.toInt()] = parmB.toInt();
-    
-    FastLED.show();
-  }
+  BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
+  pAdvertising->addServiceUUID(SERVICE_UUID);
+  pAdvertising->setScanResponse(false);
+  BLEDevice::startAdvertising();
 }
