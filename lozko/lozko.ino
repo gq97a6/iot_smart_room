@@ -8,15 +8,22 @@ CRGB strip[101];
 #define FRAMES_PER_SECOND 120
 uint8_t gHue = 0;
 
+//UDP
+#include "WiFi.h"
+#include "AsyncUDP.h"
+AsyncUDP udp;
+
+//OTA
+#include <WiFi.h>
+#include <ESPmDNS.h>
+#include <WiFiUdp.h>
+#include <ArduinoOTA.h>
+
 //MQTT and WiFI
 #include <SPI.h>
 #include <WiFi.h>
-#include <ESPmDNS.h>
-#include <ArduinoOTA.h>
 #include <PubSubClient.h>
-#include <WiFiUdp.h>
-String topicStr;
-String payloadStr;
+#include <ESP32Ping.h>
 
 //MQTT server details
 const char* MQTT_SERVER = "tailor.cloudmqtt.com";
@@ -114,6 +121,29 @@ void setup()
     else if (error == OTA_END_ERROR) Serial.println("End Failed");
   });
 
+  if(udp.listen(54091))
+  {
+    udp.onPacket([](AsyncUDPPacket packet)
+    {
+      String adr = "";
+      adr += (char)packet.data()[0];
+      adr += (char)packet.data()[1];
+      adr += (char)packet.data()[2];
+
+      if(adr == "loz" || adr == "glb")
+      {
+        String cmd = "";
+        for (int i = 3; i < packet.length(); i++)
+        {
+          cmd += (char)packet.data()[i];
+        }
+        udpCallback(cmd);
+      }
+      
+      //packet.printf("Got %u bytes of data", packet.length());
+    });
+  }
+  
   ArduinoOTA.begin();
 }
 
@@ -126,6 +156,7 @@ void loop()
     ArduinoOTA.handle();
   }
 
+  //!!!
   if (heatMode == 2) //Auto
   {
     if (millis() >= tempReceivedAlarm || temperature > termostat - 0.3)
@@ -161,8 +192,8 @@ void loop()
 
 void callback(char* topic, byte* payload, unsigned int length)
 {
-  topicStr = String(topic);
-  payloadStr = "";
+  String topicStr = String(topic);
+  String payloadStr = "";
   for (int i = 0; i < length; i++)
   {
     payloadStr += (char)payload[i];
@@ -173,21 +204,11 @@ void callback(char* topic, byte* payload, unsigned int length)
     payloadStr.toCharArray(charArray, 8);
     bedColor = toIntColor(charArray);
     colorWipe(bedColor, 20, 0, 101);
-    
-    eepromPut();
   }
   //--------------------------------------------------------------------------------
   else if (topicStr == "temp")
   {
-    if (payloadStr.toFloat() > 0 && payloadStr.toFloat() < 40) //Validate
-    {
-      tempReceivedAlarm = millis() + tempReceivedFreq; //Check if we are getting current temperature
-      temperature = payloadStr.toFloat();
-    }
-    else
-    {
-      temperature = 100;
-    }
+    
   }
   //--------------------------------------------------------------------------------
   else if (topicStr == "termostat")
@@ -202,7 +223,6 @@ void callback(char* topic, byte* payload, unsigned int length)
       termostat = 0;
       setHeatMode(0, 1);
     }
-    eepromPut();
   }
   //--------------------------------------------------------------------------------
   else if (topicStr == "b5")
@@ -215,7 +235,6 @@ void callback(char* topic, byte* payload, unsigned int length)
     {
       digitalWrite(supplyPin, HIGH);
     }
-    eepromPut();
   }
   //--------------------------------------------------------------------------------
   else if (topicStr == "heatControl")
@@ -240,12 +259,13 @@ void callback(char* topic, byte* payload, unsigned int length)
     {
       setHeatMode(0, 0);
     }
-    eepromPut();
   }
   else if (topicStr == "bedAnim")
   {
     anim = payloadStr.toInt();
   }
+
+  eepromPut();
 }
 
 void reconnect()
@@ -284,41 +304,7 @@ void colorWipe(uint32_t color, int wait, int first, int last)
   }
 }
 
-//-------------------------------------------------------------------------------- Animacje
-// Fire2012 by Mark Kriegsman, July 2012
-// as part of "Five Elements" shown here: http://youtu.be/knWiGsmgycY
-
-// This basic one-dimensional 'fire' simulation works roughly as follows:
-// There's a underlying array of 'heat' cells, that model the temperature
-// at each point along the line.  Every cycle through the simulation,
-// four steps are performed:
-//  1) All cells cool down a little bit, losing heat to the air
-//  2) The heat from each cell drifts 'up' and diffuses a little
-//  3) Sometimes randomly new 'sparks' of heat are added at the bottom
-//  4) The heat from each cell is rendered as a color into the leds array
-//     The heat-to-color mapping uses a black-body radiation approximation.
-
-// Temperature is in arbitrary units from 0 (cold black) to 255 (white hot).
-// This simulation scales it self a bit depending on NUM_LEDS; it should look
-// "OK" on anywhere from 20 to 100 LEDs without too much tweaking.
-
-// I recommend running this simulation at anywhere from 30-100 frames per second,
-// meaning an interframe delay of about 10-35 milliseconds.
-
-// Looks best on a high-density LED setup (60+ pixels/meter).
-
-// There are two main parameters you can play with to control the look and
-// feel of your fire: COOLING (used in step 1 above), and SPARKING (used
-// in step 3 above).
-
-// COOLING: How much does the air cool as it rises?
-// Less cooling = taller flames.  More cooling = shorter flames.
-// Default 50, suggested range 20-100
 #define COOLING  55
-
-// SPARKING: What chance (out of 255) is there that a new spark will be lit?
-// Higher chance = more roaring fire.  Lower chance = more flickery fire.
-// Default 120, suggested range 50-200.
 #define SPARKING 120
 #define NUM_LEDS  101
 
@@ -559,4 +545,122 @@ void flash()
     digitalWrite(2, LOW);
     delay(200);
   }
+}
+
+void udpCallback(String command)
+{
+  String parmA = "";
+  String parmB = "";
+  String parmC = "";
+  String parmD = "";
+
+  //Create array
+  char cmd[40];
+  command.toCharArray(cmd, 40);
+
+  //Slice array into 4 parameters, sample: prm1;prm2;prm3;prm4;
+  int parm = 0;
+  for (int i = 0; i < 40; i++)
+  {
+    if(cmd[i] == ';')
+    {
+      parm++;
+    }
+    else
+    {
+      switch(parm)
+      {
+        case 0:
+          parmA += cmd[i];
+          break;
+
+        case 1:
+          parmB += cmd[i];
+          break;
+
+        case 2:
+          parmC += cmd[i];
+          break;
+
+        case 3:
+          parmD += cmd[i];
+          break;
+          
+      }
+    }
+  }
+
+  if(parmA == "air") //Temperature, humidity, pressure
+  {
+    if (parmB.toFloat() > 0 && parmB.toFloat() < 40) //Validate
+    {
+      tempReceivedAlarm = millis() + tempReceivedFreq; //Update temperature reset alarm
+      temperature = parmB.toFloat();
+    }
+    else
+    {
+      temperature = 100;
+    }
+  }
+  if(parmA == "cwip") //Set one color for whole strip
+  {
+    for (int i = 0; i < 101; i++)
+    {
+      strip[i] = parmB.toInt();
+    }
+    FastLED.show();
+  }
+  else if(parmA == "setd") //Set color of one diode
+  {
+    strip[parmC.toInt()] = parmB.toInt();
+    FastLED.show();
+  }
+  else if(parmA == "term") //Set termostat
+  {
+    termostat = parmB.toFloat();
+  }
+  else if(parmA == "rst")
+  {
+    ESP.restart();
+  }
+  else if(parmA == "anim")
+  {
+    anim = parmB.toInt();
+  }
+  else if(parmA == "5") //5V power supply
+  {
+    if(parmB == "on")
+    {
+      digitalWrite(supplyPin, LOW);
+    }
+    else if(parmB == "off")
+    {
+      digitalWrite(supplyPin, HIGH);
+    }
+  }
+  else if(parmA == "heat")
+  {
+    if (parmB == "cold")
+    {
+      setHeatMode(0, 0);
+    }
+    else if (parmB == "heat")
+    {
+      setHeatMode(1, 0);
+    }
+    else if (parmB == "auto")
+    {
+      setHeatMode(2, 0);
+    }
+    else if (parmB == "heatup")
+    {
+      setHeatMode(3, 0);
+    }
+    else
+    {
+      setHeatMode(0, 0);
+    }
+  }
+
+  eepromPut();
 }

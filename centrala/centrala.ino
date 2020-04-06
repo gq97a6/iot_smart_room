@@ -18,12 +18,6 @@ uint8_t gHue = 0;
 #include <Adafruit_BME280.h>
 Adafruit_BME280 bme;
 
-//MQTT and WiFI
-#include <SPI.h>
-#include <WiFi.h>
-#include <PubSubClient.h>
-#include <ESP32Ping.h>
-
 //UDP
 #include "WiFi.h"
 #include "AsyncUDP.h"
@@ -34,6 +28,12 @@ AsyncUDP udp;
 #include <ESPmDNS.h>
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
+
+//MQTT and WiFI
+#include <SPI.h>
+#include <WiFi.h>
+#include <PubSubClient.h>
+#include <ESP32Ping.h>
 
 //MQTT server details
 const char* MQTT_SERVER = "tailor.cloudmqtt.com";
@@ -187,7 +187,7 @@ void setup()
       adr += (char)packet.data()[1];
       adr += (char)packet.data()[2];
 
-      if(adr == "cen")
+      if(adr == "cen" || adr == "glb")
       {
         String cmd = "";
         for (int i = 3; i < packet.length(); i++)
@@ -223,6 +223,10 @@ void loop()
     
     String(temp).toCharArray(charArray, 8);
     client.publish("temp", charArray);
+
+    char toSend[20];
+    snprintf(toSend, 20, "glbtemp;%f;;;", temp);
+    udp.broadcastTo(toSend, 54091);
     
     String(humi).toCharArray(charArray, 8);
     client.publish("humi", charArray);
@@ -327,22 +331,8 @@ void callback(char* topic, byte* payload, unsigned int length)
     payloadStr += (char)payload[i];
   }
   
-  if (topicStr == "termostat")
-  {
-    termostat = payloadStr.toInt();
-  }
 //--------------------------------------------------------------------------------
-  else if (topicStr == "heatMode")
-  {
-    heatMode = payloadStr;
-  }
-//--------------------------------------------------------------------------------
-  else if (topicStr == "valve")
-  {
-    valve = payloadStr.toInt();
-  }
-//--------------------------------------------------------------------------------
-  else if (topicStr == "c12")
+  if (topicStr == "c12")
   {
     if (payloadStr == "1")
     {
@@ -370,11 +360,6 @@ void callback(char* topic, byte* payload, unsigned int length)
     }
   }
 //--------------------------------------------------------------------------------
-  else if (topicStr == "b5")
-  {
-    b5 = payloadStr.toInt();
-  }
-//--------------------------------------------------------------------------------
   else if (topicStr == "topBar")
   {
     if (payloadStr == "1")
@@ -391,12 +376,6 @@ void callback(char* topic, byte* payload, unsigned int length)
       client.publish("c12", "0");
       digitalWrite(4, HIGH);
     }
-  }
-//--------------------------------------------------------------------------------
-  else if (topicStr == "bedColor")
-  {
-    payloadStr.toCharArray(charArray, 8);
-    bedColor = toIntColor(charArray);
   }
 //--------------------------------------------------------------------------------
   else if (topicStr == "deskColor")
@@ -449,42 +428,7 @@ void colorWipe(uint32_t color, int wait, int first, int last)
   }
 }
 
-
-//-------------------------------------------------------------------------------- Animacje
-// Fire2012 by Mark Kriegsman, July 2012
-// as part of "Five Elements" shown here: http://youtu.be/knWiGsmgycY
-
-// This basic one-dimensional 'fire' simulation works roughly as follows:
-// There's a underlying array of 'heat' cells, that model the temperature
-// at each point along the line.  Every cycle through the simulation,
-// four steps are performed:
-//  1) All cells cool down a little bit, losing heat to the air
-//  2) The heat from each cell drifts 'up' and diffuses a little
-//  3) Sometimes randomly new 'sparks' of heat are added at the bottom
-//  4) The heat from each cell is rendered as a color into the leds array
-//     The heat-to-color mapping uses a black-body radiation approximation.
-
-// Temperature is in arbitrary units from 0 (cold black) to 255 (white hot).
-// This simulation scales it self a bit depending on NUM_LEDS; it should look
-// "OK" on anywhere from 20 to 100 LEDs without too much tweaking.
-
-// I recommend running this simulation at anywhere from 30-100 frames per second,
-// meaning an interframe delay of about 10-35 milliseconds.
-
-// Looks best on a high-density LED setup (60+ pixels/meter).
-
-// There are two main parameters you can play with to control the look and
-// feel of your fire: COOLING (used in step 1 above), and SPARKING (used
-// in step 3 above).
-
-// COOLING: How much does the air cool as it rises?
-// Less cooling = taller flames.  More cooling = shorter flames.
-// Default 50, suggested range 20-100
 #define COOLING  55
-
-// SPARKING: What chance (out of 255) is there that a new spark will be lit?
-// Higher chance = more roaring fire.  Lower chance = more flickery fire.
-// Default 120, suggested range 50-200.
 #define SPARKING 120
 #define NUM_LEDS  156
 
@@ -736,7 +680,7 @@ void udpCallback(String command)
 
   //Slice array into 4 parameters, sample: prm1;prm2;prm3;prm4;
   int parm = 0;
-  for (int i = 0; i < 20; i++)
+  for (int i = 0; i < 40; i++)
   {
     if(cmd[i] == ';')
     {
@@ -766,7 +710,7 @@ void udpCallback(String command)
     }
   }
 
-  if(parmA == "cwip")
+  if(parmA == "cwip") //Set one color for whole strip
   {
     for (int i = 0; i <= 77; i++)
     {
@@ -775,11 +719,41 @@ void udpCallback(String command)
     }
     FastLED.show();
   }
-  else if(parmA == "setd")
+  else if(parmA == "setd") //Set color of one diode
   {
     stripL[parmC.toInt()] = parmB.toInt();
     stripP[parmC.toInt()] = parmB.toInt();
     
     FastLED.show();
+  }
+  else if(parmA == "rst")
+  {
+    ESP.restart();
+  }
+  else if(parmA == "anim")
+  {
+    anim = parmB.toInt();
+  }
+  else if(parmA == "5") //5V power supply
+  {
+    if(parmB == "on")
+    {
+      digitalWrite(15, LOW);
+    }
+    else if(parmB == "off")
+    {
+      digitalWrite(15, HIGH);
+    }
+  }
+  else if(parmA == "12") //12V power supply
+  {
+    if(parmB == "on")
+    {
+      digitalWrite(4, LOW);
+    }
+    else if(parmB == "off")
+    {
+      digitalWrite(4, HIGH);
+    }
   }
 }

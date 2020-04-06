@@ -1,12 +1,19 @@
+//UDP
+#include "WiFi.h"
+#include "AsyncUDP.h"
+AsyncUDP udp;
+
+//OTA
+#include <WiFi.h>
+#include <ESPmDNS.h>
+#include <WiFiUdp.h>
+#include <ArduinoOTA.h>
+
 //MQTT and WiFI
 #include <SPI.h>
 #include <WiFi.h>
-#include <ESPmDNS.h>
-#include <ArduinoOTA.h>
 #include <PubSubClient.h>
-#include <WiFiUdp.h>
-String topicStr;
-String payloadStr;
+#include <ESP32Ping.h>
 
 //MQTT server details
 const char* MQTT_SERVER = "tailor.cloudmqtt.com";
@@ -72,6 +79,29 @@ void setup()
     else if (error == OTA_END_ERROR) Serial.println("End Failed");
   });
 
+  if(udp.listen(54091))
+  {
+    udp.onPacket([](AsyncUDPPacket packet)
+    {
+      String adr = "";
+      adr += (char)packet.data()[0];
+      adr += (char)packet.data()[1];
+      adr += (char)packet.data()[2];
+
+      if(adr == "wen" || adr == "glb")
+      {
+        String cmd = "";
+        for (int i = 3; i < packet.length(); i++)
+        {
+          cmd += (char)packet.data()[i];
+        }
+        udpCallback(cmd);
+      }
+      
+      //packet.printf("Got %u bytes of data", packet.length());
+    });
+  }
+  
   ArduinoOTA.begin();
 }
 
@@ -91,8 +121,8 @@ void callback(char* topic, byte* payload, unsigned int length)
 {
   setGear(0); //Safety
   
-  topicStr = String(topic);
-  payloadStr = "";
+  String topicStr = String(topic);
+  String payloadStr = "";
   for (int i = 0; i < length; i++)
   {
     payloadStr += (char)payload[i];
@@ -198,5 +228,58 @@ void conErrorHandle()
       wifiRecAtm++;
       WiFi.begin(ssid, password);
     }
+  }
+}
+
+void udpCallback(String command)
+{
+  String parmA = "";
+  String parmB = "";
+  String parmC = "";
+  String parmD = "";
+
+  //Create array
+  char cmd[40];
+  command.toCharArray(cmd, 40);
+
+  //Slice array into 4 parameters, sample: prm1;prm2;prm3;prm4;
+  int parm = 0;
+  for (int i = 0; i < 40; i++)
+  {
+    if(cmd[i] == ';')
+    {
+      parm++;
+    }
+    else
+    {
+      switch(parm)
+      {
+        case 0:
+          parmA += cmd[i];
+          break;
+
+        case 1:
+          parmB += cmd[i];
+          break;
+
+        case 2:
+          parmC += cmd[i];
+          break;
+
+        case 3:
+          parmD += cmd[i];
+          break;
+          
+      }
+    }
+  }
+
+  if(parmA == "gear")
+  {
+    setGear(parmB.toInt());
+  }
+  else if(parmA == "rst")
+  {
+    ESP.restart();
   }
 }
