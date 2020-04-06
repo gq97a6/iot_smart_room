@@ -1,15 +1,37 @@
+//Variables
+#define FRAMES_PER_SECOND 120
+
+#define STRIP_LEN_L 78
+#define STRIP_LEN_P 78
+
+#define STRIP_PIN_L 18
+#define STRIP_PIN_P 5
+
+#define SUPPLY_5_PIN 15
+#define SUPPLY_12_PIN 4
+#define POTEN_PIN 34
+
+//Alarms
+#define UPDATE_FREQ 10000
+#define RECON_FREQ 10000
+
+#define MQTT_PORT 11045
+#define MQTT_USER "derwsywl"
+#define MQTT_PASSWORD "IItmHbbnu9mD"
+const char* MQTT_SERVER = "tailor.cloudmqtt.com";
+
+const char* ssid = "2.4G-Vectra-WiFi-8F493A";
+const char* password = "brygida71";
+IPAddress ipToPing (8, 8, 8, 8); // The remote ip to ping
+
 //EEPROM
 #include <Preferences.h>
 Preferences preferences;
 
 //LED strips
 #include <FastLED.h>
-CRGB stripL[78];
-CRGB stripP[78];
-
-#define FRAMES_PER_SECOND 120
-bool gReverseDirection = false;
-uint8_t gHue = 0;
+CRGB stripL[STRIP_LEN_L];
+CRGB stripP[STRIP_LEN_P];
 
 //BME280 sensor
 #include <Wire.h>
@@ -35,25 +57,9 @@ AsyncUDP udp;
 #include <PubSubClient.h>
 #include <ESP32Ping.h>
 
-//MQTT server details
-const char* MQTT_SERVER = "tailor.cloudmqtt.com";
-#define MQTT_PORT 11045
-#define MQTT_USER "derwsywl"
-#define MQTT_PASSWORD "IItmHbbnu9mD"
-
-//WiFi details
-const char* ssid = "2.4G-Vectra-WiFi-8F493A";
-const char* password = "brygida71";
-
-const char* ssidAP = "myAP";
-const char* passwordAP = "!<ZN'u!@WNAHP<2S";
-
 WiFiClient wifiClient;
 PubSubClient client(wifiClient);
-IPAddress ip (8, 8, 8, 8); // The remote ip to ping
 
-//Variables
-bool state; //Button state
 double buttonsTs[5] {0, 0, 0, 0, 0}; //Timestamp to last change
 int buttons[5][5] =
 {{27, 0, 0, 0, 0},
@@ -63,87 +69,39 @@ int buttons[5][5] =
 {32, 0, 0, 0, 0}};
 //Pin, state, filtered, ascending, descending
 
-//Callback
-String topicStr;
-String payloadStr;
-
-//Alarms
-int updateFreq = 10000;
-long updateAlarm;
-
-//Lock buttons to prevent errors
-int heatButtonFreq = 200;
-long heatButtonAlarm;
-int topBarButtonFreq = 200;
-long topBarButtonAlarm;
-
-//Reconnecting
-int wifiRecFreq = 10000;
-long wifiRecAlarm;
-int mqttRecFreq = 10000;
-long mqttRecAlarm;
-int wifiRecAtm = 0;
-int mqttRecAtm = 0;
-int wifiRec = 5; //After wifiRec times, give up reconnecting and restart esp
-int mqttRec = 5;
-
-//Status
-float temp;
-int humi;
-int pres;
-//--------------------
-float termostat = 10;
-String heatMode = "cold";
-bool valve;
-//--------------------
-bool c12;
-bool c5;
-bool b5;
-//--------------------
-String wenTerminal;
-String lozTerminal;
-//--------------------
-bool topBar;
-int bedColor = 255;
-int deskColor = 255;
-byte anim;
-
-int i; int ii; char charArray[8]; int poten; char cmd[12];
 void setup()
 {
-  analogReadResolution(2);
-
-  pinMode(2, OUTPUT); //Build-in diode
-
-  pinMode(15, OUTPUT); //5VDC supply
-  pinMode(4, OUTPUT); //12VDC supply
-  digitalWrite(15, HIGH);
-  digitalWrite(4, HIGH);
-
-  for(i = 0; i<=4; i++)
+  for(int i=0; i<=4; i++)
   {
     pinMode(buttons[i][0], INPUT_PULLUP);
   }
-  pinMode(34, INPUT); //Potn
-
-  FastLED.addLeds<WS2812B,18,GRB>(stripL, 78).setCorrection(TypicalLEDStrip);
-  FastLED.addLeds<WS2812B,5,GRB>(stripP, 78).setCorrection(TypicalLEDStrip);
-  FastLED.setBrightness(255);
   
-  bme.begin();
+  pinMode(POTEN_PIN, INPUT); //Poten
+  analogReadResolution(9);
+  
+  pinMode(SUPPLY_5_PIN, OUTPUT); //5VDC supply
+  pinMode(SUPPLY_12_PIN, OUTPUT); //12VDC supply
+  
+  digitalWrite(15, HIGH);
+  digitalWrite(4, HIGH);
+  
+  FastLED.addLeds<WS2812B, STRIP_PIN_L, GRB>(stripL, STRIP_LEN_L).setCorrection(TypicalLEDStrip);
+  FastLED.addLeds<WS2812B, STRIP_PIN_P, GRB>(stripP, STRIP_LEN_P).setCorrection(TypicalLEDStrip);
+  FastLED.setBrightness(255);
 
   //MQTT
   client.setServer(MQTT_SERVER, MQTT_PORT);
-  client.setCallback(callback);
+  client.setCallback(mqttCallback);
 
-  //OTA programing and WiFI
-  Serial.begin(115200);
-  Serial.println("Booting");
-
-  Serial.begin(115200);
-  WiFi.mode(WIFI_AP_STA);
-  WiFi.softAP(ssidAP, passwordAP, 3, 1);
+  //Wifi and OTA update
+  WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
+
+  delay(1000);
+  if(WiFi.status() != WL_CONNECTED)
+  {
+    Serial.println("notConnected!");
+  }
 
   ArduinoOTA
   .onStart([]()
@@ -196,37 +154,42 @@ void setup()
         }
         udpCallback(cmd);
       }
-      
-      //packet.printf("Got %u bytes of data", packet.length());
     });
   }
   
   ArduinoOTA.begin();
+  bme.begin();
 }
+
+
+//Status
+char charArray[8];
+uint8_t gHue;
+long updateAlarm;
+long reconAlarm;
+byte anim;
+bool c5;
+bool c12;
+bool topBar;
 
 void loop()
 {
   conErrorHandle(); //OTA and connection maintenance
 
-  if(WiFi.status() == WL_CONNECTED)
-  {
-    ArduinoOTA.handle();
-  }
-
-  temp = bme.readTemperature();
-  humi = bme.readHumidity();
-  pres = bme.readPressure() / 100.0F;
+  float temp = bme.readTemperature();
+  int humi = bme.readHumidity();
+  int pres = bme.readPressure() / 100.0F;
 
   if (millis() >= updateAlarm)
   {
-    updateAlarm = millis() + updateFreq;
+    updateAlarm = millis() + UPDATE_FREQ;
+
+    char toSend[20];
+    snprintf(toSend, 20, "glbair;%f;%f;%f;", temp, humi, pres);
+    udp.broadcastTo(toSend, 54091);
     
     String(temp).toCharArray(charArray, 8);
     client.publish("temp", charArray);
-
-    char toSend[20];
-    snprintf(toSend, 20, "glbtemp;%f;;;", temp);
-    udp.broadcastTo(toSend, 54091);
     
     String(humi).toCharArray(charArray, 8);
     client.publish("humi", charArray);
@@ -238,21 +201,19 @@ void loop()
   buttonsHandle();
   
   //Top bar control
-  if(buttons[3][3] && !buttons[0][2] && !buttons[1][2] && !buttons[2][2] && !buttons[4][2] && millis() >= topBarButtonAlarm)
-  {
-    topBarButtonAlarm = millis() + topBarButtonFreq;
-    
+  if(buttons[3][3] && !buttons[0][2] && !buttons[1][2] && !buttons[2][2] && !buttons[4][2])
+  {    
     if(topBar)
     {
       topBar = 0;
-      c12 = 0;
+      bool c12 = 0;
       digitalWrite(4, HIGH);
       client.publish("c12", "0");
     }
     else
     {
       topBar = 1;
-      c12 = 1;
+      bool c12 = 1;
       digitalWrite(4, LOW);
       client.publish("c12", "1");
     }
@@ -261,7 +222,7 @@ void loop()
   //Fan control //0(0) 1-160(1) 161-175(X) 176-335(2) 336-350(X) 351-511(3)
   if(buttons[2][3] && !buttons[0][2] && !buttons[1][2] && !buttons[3][2] && !buttons[4][2])
   {
-    poten = analogRead(34);
+    int poten = analogRead(34);
     if(poten == 0)
     {
       client.publish("fan", "0");
@@ -281,9 +242,9 @@ void loop()
   }
   
   //Heating control
-  if(buttons[0][3] && !buttons[1][2] && !buttons[2][2] && !buttons[3][2] && !buttons[4][2] && millis() >= heatButtonAlarm)
+  if(buttons[0][3] && !buttons[1][2] && !buttons[2][2] && !buttons[3][2] && !buttons[4][2])
   {
-    poten = analogRead(34);
+    int poten = analogRead(34);
     if(poten == 0)
     {
       client.publish("heatControl", "cold");
@@ -322,75 +283,33 @@ void loop()
   }
 }
 
-void callback(char* topic, byte* payload, unsigned int length)
+void conErrorHandle()
 {
-  topicStr = String(topic);
-  payloadStr = "";
-  for (int i = 0; i < length; i++)
+  if(WiFi.status() == WL_CONNECTED) //No connection with wifi router
   {
-    payloadStr += (char)payload[i];
-  }
-  
-//--------------------------------------------------------------------------------
-  if (topicStr == "c12")
-  {
-    if (payloadStr == "1")
+    ArduinoOTA.handle();
+    
+    if(!client.loop()) //No connection with mqtt server
     {
-      c12 = 1;
-      digitalWrite(4, LOW);
-    }
-    else if (payloadStr == "0")
-    {
-      c12 = 0;
-      digitalWrite(4, HIGH);
+      if(Ping.ping(ipToPing, 1)) //No internet connection
+      {
+        mqttReconnect();
+      }
     }
   }
-//--------------------------------------------------------------------------------
-  else if (topicStr == "c5")
+  else
   {
-    if (payloadStr == "1")
+    if (millis() >= reconAlarm)
     {
-      c5 = 1;
-      digitalWrite(15, LOW);
+      reconAlarm = millis() + RECON_FREQ;
+
+      WiFi.disconnect();
+      WiFi.begin(ssid, password);
     }
-    else if (payloadStr == "0")
-    {
-      c5 = 0;
-      digitalWrite(15, HIGH);
-    }
-  }
-//--------------------------------------------------------------------------------
-  else if (topicStr == "topBar")
-  {
-    if (payloadStr == "1")
-    {
-      topBar = 1;
-      c12 = 1;
-      client.publish("c12", "1");
-      digitalWrite(4, LOW);
-    }
-    else if (payloadStr == "0")
-    {
-      topBar = 0;
-      c12 = 0;
-      client.publish("c12", "0");
-      digitalWrite(4, HIGH);
-    }
-  }
-//--------------------------------------------------------------------------------
-  else if (topicStr == "deskColor")
-  {
-    payloadStr.toCharArray(charArray, 8);
-    deskColor = toIntColor(charArray);
-    colorWipe(deskColor, 20, 0, 77);
-  }
-  else if (topicStr == "deskAnim")
-  {
-    anim = payloadStr.toInt();
   }
 }
 
-void reconnect()
+void mqttReconnect()
 {
   //Create a random client ID
   String clientId = "ESP32Client-";
@@ -401,21 +320,47 @@ void reconnect()
   {
     //Subscribe list
     client.subscribe("topBar");
-    client.subscribe("fan");
     client.subscribe("deskColor");
-    client.subscribe("bedColor");
-    client.subscribe("bedStrip");
-    client.subscribe("deskStrip");
+    client.subscribe("deskAnim");
     client.subscribe("c12");
     client.subscribe("c5");
-    client.subscribe("b5");
-    client.subscribe("heatControl");
-    client.subscribe("termostat");
-    client.subscribe("valve");
-    client.subscribe("deskAnim");
   }
 }
 
+void buttonsHandle()
+{
+  for (int i = 0; i < 5; i++)
+  {
+    bool state = !digitalRead(buttons[i][0]);
+
+    //Clear states
+    buttons[i][3] = 0;
+    buttons[i][4] = 0;
+    
+    if (buttons[i][1] != state)
+    {
+      buttons[i][1] = state; //Real state
+      buttonsTs[i] = millis(); //Timestamp to last change
+    }
+
+    if(millis() - buttonsTs[i] > 20 && buttonsTs[i] != 0)
+    {
+      buttonsTs[i] = 0;
+      buttons[i][2] = state; //Filtered state
+      
+      if (state)
+      {
+        buttons[i][3] = 1; //Ascending
+      }
+      else
+      {
+        buttons[i][4] = 1; //Descending
+      }
+    }
+  }
+}
+
+//-------------------------------------------------------------------------------- Strip functions
 void colorWipe(uint32_t color, int wait, int first, int last)
 {
   for (int i = first; i <= last; i++)
@@ -534,7 +479,6 @@ void bpm()
     FastLED.show();
   }
 }
-//--------------------------------------------------------------------------------
 
 int toIntColor(char hexColor[])
 {
@@ -557,113 +501,73 @@ int toIntColor(char hexColor[])
 
   return color;
 }
-      
-void buttonsHandle()
+//-------------------------------------------------------------------------------- Callbacks
+
+void mqttCallback(char* topic, byte* payload, unsigned int length)
 {
-  for (i = 0; i < 5; i++)
+  String topicStr = String(topic);
+  String payloadStr = "";
+  
+  for (int i = 0; i < length; i++)
   {
-    state = !digitalRead(buttons[i][0]);
-
-    //Clear states
-    buttons[i][3] = 0;
-    buttons[i][4] = 0;
-    
-    if (buttons[i][1] != state)
+    payloadStr += (char)payload[i];
+  }
+  
+//--------------------------------------------------------------------------------
+  if (topicStr == "c12")
+  {
+    if (payloadStr == "1")
     {
-      buttons[i][1] = state; //Real state
-      buttonsTs[i] = millis(); //Timestamp to last change
+      c12 = 1;
+      digitalWrite(4, LOW);
     }
-
-    if(millis() - buttonsTs[i] > 20 && buttonsTs[i] != 0)
+    else if (payloadStr == "0")
     {
-      buttonsTs[i] = 0;
-      buttons[i][2] = state; //Filtered state
-      
-      if (state)
-      {
-        buttons[i][3] = 1; //Ascending
-      }
-      else
-      {
-        buttons[i][4] = 1; //Descending
-      }
+      c12 = 0;
+      digitalWrite(4, HIGH);
     }
   }
-}
-
-//-------------------------------------------------------------------------------- EEPROM #FIX
-//void eepromPut()
-//{
-//  preferences.putDouble("hUpAlr", heatUpAlarm);
-//  preferences.putUInt("bedClr", bedColor);
-//  preferences.putUInt("htMd", heatMode);
-//  preferences.putFloat("termst", termostat);
-//
-//  float termostat = 10;
-//  String heatMode = "cold";
-//  bool valve;
-//  bool c12;
-//  bool c5;
-//  bool topBar;
-//  bool bedStrip;
-//  bool deskStrip;
-//  int bedColor = 255;
-//  int deskColor = 255;
-//}
-//
-//void eepromGet()
-//{
-//  heatUpAlarm = preferences.getDouble("hUpAlr", 0);
-//  bedColor = preferences.getUInt("bedClr", 255);
-//  heatMode = preferences.getUInt("htMd", 0);
-//  termostat = preferences.getFloat("termst", 0);
-//}
-
-void conErrorHandle()
-{
-//-------------------------------------------------------------------------------- Check mqtt connection 
-  if(client.loop())
+//--------------------------------------------------------------------------------
+  else if (topicStr == "c5")
   {
-    mqttRecAtm = 0; //If fine reset reconnection atempts counter
-  }
-  else if(millis() >= mqttRecAlarm)
-  {
-    mqttRecAlarm = millis() + mqttRecFreq;
-    if(mqttRecAtm >= mqttRec) //After mqttRec tries restart esp.
+    if (payloadStr == "1")
     {
-      ESP.restart(); 
+      c5 = 1;
+      digitalWrite(15, LOW);
     }
-    else //Reconnect
+    else if (payloadStr == "0")
     {
-      mqttRecAtm++;
-      reconnect();
+      c5 = 0;
+      digitalWrite(15, HIGH);
     }
   }
-//-------------------------------------------------------------------------------- Check wifi connection 
- 
-  else if(millis() >= wifiRecAlarm) //Wait for wifiRecAlarm
+//--------------------------------------------------------------------------------
+  else if (topicStr == "topBar")
   {
-    wifiRecAlarm = millis() + wifiRecFreq;
-    if(wifiRecAtm >= wifiRec) //After wifiRec tries restart esp.
+    if (payloadStr == "1")
     {
-      ESP.restart();
+      topBar = 1;
+      c12 = 1;
+      client.publish("c12", "1");
+      digitalWrite(4, LOW);
     }
-    else //Reconnect
+    else if (payloadStr == "0")
     {
-      wifiRecAtm++;
-      WiFi.begin(ssid, password);
+      topBar = 0;
+      c12 = 0;
+      client.publish("c12", "0");
+      digitalWrite(4, HIGH);
     }
   }
-}
-
-void flash()
-{
-  for (int i = 0; i < 6; i++)
+//--------------------------------------------------------------------------------
+  else if (topicStr == "deskColor")
   {
-    digitalWrite(2, HIGH);
-    delay(200);
-    digitalWrite(2, LOW);
-    delay(200);
+    payloadStr.toCharArray(charArray, 8);
+    colorWipe(toIntColor(charArray), 20, 0, 77);
+  }
+  else if (topicStr == "deskAnim")
+  {
+    anim = payloadStr.toInt();
   }
 }
 
@@ -710,7 +614,8 @@ void udpCallback(String command)
     }
   }
 
-  if(parmA == "cwip") //Set one color for whole strip
+  //-------------------------------------------------------------------------------- Set one color for whole strip
+  if(parmA == "cwip")
   {
     for (int i = 0; i <= 77; i++)
     {
@@ -719,22 +624,26 @@ void udpCallback(String command)
     }
     FastLED.show();
   }
-  else if(parmA == "setd") //Set color of one diode
+  //-------------------------------------------------------------------------------- Set color of one diode
+  else if(parmA == "setd")
   {
     stripL[parmC.toInt()] = parmB.toInt();
     stripP[parmC.toInt()] = parmB.toInt();
     
     FastLED.show();
   }
+  //--------------------------------------------------------------------------------
   else if(parmA == "rst")
   {
     ESP.restart();
   }
+  //--------------------------------------------------------------------------------
   else if(parmA == "anim")
   {
-    anim = parmB.toInt();
+    byte anim = parmB.toInt();
   }
-  else if(parmA == "5") //5V power supply
+  //-------------------------------------------------------------------------------- 5V power supply
+  else if(parmA == "5")
   {
     if(parmB == "on")
     {
@@ -745,7 +654,8 @@ void udpCallback(String command)
       digitalWrite(15, HIGH);
     }
   }
-  else if(parmA == "12") //12V power supply
+  //-------------------------------------------------------------------------------- 12V power supply
+  else if(parmA == "12")
   {
     if(parmB == "on")
     {

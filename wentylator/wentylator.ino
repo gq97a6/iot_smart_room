@@ -1,3 +1,14 @@
+#define RECON_FREQ 10000
+
+#define MQTT_PORT 11045
+#define MQTT_USER "derwsywl"
+#define MQTT_PASSWORD "IItmHbbnu9mD"
+const char* MQTT_SERVER = "tailor.cloudmqtt.com";
+
+const char* ssid = "2.4G-Vectra-WiFi-8F493A";
+const char* password = "brygida71";
+IPAddress ipToPing (8, 8, 8, 8); // The remote ip to ping
+
 //UDP
 #include "WiFi.h"
 #include "AsyncUDP.h"
@@ -15,27 +26,8 @@ AsyncUDP udp;
 #include <PubSubClient.h>
 #include <ESP32Ping.h>
 
-//MQTT server details
-const char* MQTT_SERVER = "tailor.cloudmqtt.com";
-#define MQTT_PORT 11045
-#define MQTT_USER "derwsywl"
-#define MQTT_PASSWORD "IItmHbbnu9mD"
-
-//WiFi details
-const char* ssid = "2.4G-Vectra-WiFi-8F493A";
-const char* password = "brygida71";
 WiFiClient wifiClient;
 PubSubClient client(wifiClient);
-
-//Reconnecting
-int wifiRecFreq = 20000;
-long wifiRecAlarm;
-int mqttRecFreq = 20000;
-long mqttRecAlarm;
-int wifiRecAtm = 0;
-int mqttRecAtm = 0;
-int wifiRec = 6; //After wifiRec times, give up reconnecting and restart esp
-int mqttRec = 6;
 
 void setup()
 {
@@ -47,11 +39,17 @@ void setup()
   
   //MQTT
   client.setServer(MQTT_SERVER, MQTT_PORT);
-  client.setCallback(callback);
+  client.setCallback(mqttCallback);
 
-  //OTA update and WiFI
+  //Wifi and OTA update
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
+
+  delay(1000);
+  if(WiFi.status() != WL_CONNECTED)
+  {
+    Serial.println("notConnected!");
+  }
 
   ArduinoOTA
   .onStart([]()
@@ -64,6 +62,7 @@ void setup()
   })
   .onEnd([]()
   {
+    Serial.println("\nEnd");
   })
   .onProgress([](unsigned int progress, unsigned int total)
   {
@@ -77,6 +76,12 @@ void setup()
     else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
     else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
     else if (error == OTA_END_ERROR) Serial.println("End Failed");
+
+    digitalWrite(2, HIGH);
+    delay(3000);
+    digitalWrite(2, LOW);
+
+    ESP.restart();
   });
 
   if(udp.listen(54091))
@@ -105,51 +110,41 @@ void setup()
   ArduinoOTA.begin();
 }
 
+//Status
+long reconAlarm;
+
 void loop()
 {
   conErrorHandle();
-  
-  if (WiFi.status() == WL_CONNECTED)
+}
+
+void conErrorHandle()
+{
+  if(WiFi.status() == WL_CONNECTED) //No connection with wifi router
   {
     ArduinoOTA.handle();
-  }
-
-  delay(150);
-}
-
-void callback(char* topic, byte* payload, unsigned int length)
-{
-  setGear(0); //Safety
-  
-  String topicStr = String(topic);
-  String payloadStr = "";
-  for (int i = 0; i < length; i++)
-  {
-    payloadStr += (char)payload[i];
-  }
-  
-  if(topicStr == "fan")
-  {
-    switch(payloadStr.toInt())
+    
+    if(!client.loop()) //No connection with mqtt server
     {
-      case 1:
-        setGear(1);
-        break;
-      case 2:
-        setGear(2);
-        break;
-      case 3:
-        setGear(3);
-        break;
+      if(Ping.ping(ipToPing, 1)) //No internet connection
+      {
+        mqttReconnect();
+      }
     }
   }
-  else if(topicStr == "terminal" && payloadStr == "fan restart")
+  else
   {
-    ESP.restart();
+    if (millis() >= reconAlarm)
+    {
+      reconAlarm = millis() + RECON_FREQ;
+
+      WiFi.disconnect();
+      WiFi.begin(ssid, password);
+    }
   }
 }
 
-void reconnect()
+void mqttReconnect()
 {
   //Create a random client ID
   String clientId = "ESP32Client-";
@@ -191,43 +186,35 @@ void setGear(int t)
   }
 }
 
-void conErrorHandle()
+void mqttCallback(char* topic, byte* payload, unsigned int length)
 {
-  //Check mqtt connection --------------------------------------------------------------------------------
-  if (client.loop())
+  setGear(0); //Safety
+  
+  String topicStr = String(topic);
+  String payloadStr = "";
+  for (int i = 0; i < length; i++)
   {
-    mqttRecAtm = 0; //If fine reset reconnection atempts counter
+    payloadStr += (char)payload[i];
   }
-  else if (millis() >= mqttRecAlarm)
+  
+  if(topicStr == "fan")
   {
-    mqttRecAlarm = millis() + mqttRecFreq;
-    if (mqttRecAtm >= mqttRec) //After mqttRec tries restart esp.
+    switch(payloadStr.toInt())
     {
-      ESP.restart();
-    }
-    else //Reconnect
-    {
-      mqttRecAtm++;
-      reconnect();
+      case 1:
+        setGear(1);
+        break;
+      case 2:
+        setGear(2);
+        break;
+      case 3:
+        setGear(3);
+        break;
     }
   }
-  //Check wifi connection --------------------------------------------------------------------------------
-  if (WiFi.status() == WL_CONNECTED)
+  else if(topicStr == "terminal" && payloadStr == "fan restart")
   {
-    wifiRecAtm = 0; //If fine reset reconnection atempts counter
-  }
-  else if (millis() >= wifiRecAlarm) //Wait for wifiRecAlarm
-  {
-    wifiRecAlarm = millis() + wifiRecFreq;
-    if (wifiRecAtm >= wifiRec) //After wifiRec tries restart esp.
-    {
-      ESP.restart();
-    }
-    else //Reconnect
-    {
-      wifiRecAtm++;
-      WiFi.begin(ssid, password);
-    }
+    ESP.restart();
   }
 }
 

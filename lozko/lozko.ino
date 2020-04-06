@@ -1,12 +1,36 @@
+//Variables
+#define FRAMES_PER_SECOND 120
+
+#define STRIP_LEN 101
+#define STRIP_PIN 13
+
+#define SUPPLY_PIN 27
+#define VALVE_PIN 14
+
+#define TEMP_RECEIVED_FREQ 20000
+#define HEATUP_FREQ 180000
+#define RECON_FREQ 10000
+
+//After WIFI_REC times, give up reconnecting and restart esp
+#define WIFI_REC 5
+#define MQTT_REC 5
+
+#define MQTT_PORT 11045
+#define MQTT_USER "derwsywl"
+#define MQTT_PASSWORD "IItmHbbnu9mD"
+const char* MQTT_SERVER = "tailor.cloudmqtt.com";
+
+const char* ssid = "2.4G-Vectra-WiFi-8F493A";
+const char* password = "brygida71";
+IPAddress ipToPing (8, 8, 8, 8); // The remote ip to ping
+
 //EEPROM
 #include <Preferences.h>
 Preferences preferences;
 
 //Strip
 #include <FastLED.h>
-CRGB strip[101];
-#define FRAMES_PER_SECOND 120
-uint8_t gHue = 0;
+CRGB strip[STRIP_LEN];
 
 //UDP
 #include "WiFi.h"
@@ -25,72 +49,28 @@ AsyncUDP udp;
 #include <PubSubClient.h>
 #include <ESP32Ping.h>
 
-//MQTT server details
-const char* MQTT_SERVER = "tailor.cloudmqtt.com";
-#define MQTT_PORT 11045
-#define MQTT_USER "derwsywl"
-#define MQTT_PASSWORD "IItmHbbnu9mD"
-
-//WiFi details
-const char* ssid = "2.4G-Vectra-WiFi-8F493A";
-const char* password = "brygida71";
 WiFiClient wifiClient;
 PubSubClient client(wifiClient);
 
-//Pins
-int heatPin = 14;
-int supplyPin = 27;
-
-//State
-int bedColor;
-int heatMode; //Cold(0), Heat(1), Auto(2), Heat up(3)
-float temperature;
-float termostat;
-bool valveS;
-byte anim;
-
-//Alarms
-int heatUpFreq = 3 * 60 * 1000;
-double heatUpAlarm;
-
-int tempReceivedFreq = 20000;
-double tempReceivedAlarm;
-
-//Reconnecting
-int wifiRecFreq = 10000;
-long wifiRecAlarm;
-int mqttRecFreq = 10000;
-long mqttRecAlarm;
-int wifiRecAtm = 0;
-int mqttRecAtm = 0;
-int wifiRec = 5; //After wifiRec times, give up reconnecting and restart esp
-int mqttRec = 5;
-
-int i; char charArray[8];
 void setup()
 {
   preferences.begin("memory", false);
   eepromGet();
 
-  FastLED.addLeds<WS2812B,13,GRB>(strip, 101).setCorrection(TypicalLEDStrip);
-  FastLED.setBrightness(255);
-
-  pinMode(heatPin, OUTPUT);
-  pinMode(supplyPin, OUTPUT);
-  pinMode(2, OUTPUT);
-
+  pinMode(VALVE_PIN, OUTPUT);
+  pinMode(SUPPLY_PIN, OUTPUT);
+  
   valve(0);
-  digitalWrite(supplyPin, HIGH);
+  digitalWrite(SUPPLY_PIN, HIGH);
 
-  Serial.begin(115200);
-  Serial.setTimeout(30);
+  FastLED.addLeds<WS2812B, STRIP_PIN, GRB>(strip, STRIP_LEN).setCorrection(TypicalLEDStrip);
+  FastLED.setBrightness(255);
 
   //MQTT
   client.setServer(MQTT_SERVER, MQTT_PORT);
-  client.setCallback(callback);
+  client.setCallback(mqttCallback);
 
-  //OTA update and WiFI
-  Serial.println("Booting");
+  //Wifi and OTA update
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
 
@@ -139,13 +119,25 @@ void setup()
         }
         udpCallback(cmd);
       }
-      
-      //packet.printf("Got %u bytes of data", packet.length());
     });
   }
   
   ArduinoOTA.begin();
 }
+
+//Status
+char charArray[8];
+uint8_t gHue;
+int bedColor;
+byte anim;
+bool b5;
+int heatMode; //Cold(0), Heat(1), Auto(2), Heat up(3)
+float temperature;
+float termostat;
+bool valveS;
+long tempReceivedAlarm;
+long heatUpAlarm;
+long reconAlarm;
 
 void loop()
 {
@@ -190,85 +182,33 @@ void loop()
   }
 }
 
-void callback(char* topic, byte* payload, unsigned int length)
+void conErrorHandle()
 {
-  String topicStr = String(topic);
-  String payloadStr = "";
-  for (int i = 0; i < length; i++)
+  if(WiFi.status() == WL_CONNECTED) //No connection with wifi router
   {
-    payloadStr += (char)payload[i];
-  }
-
-  if (topicStr == "bedColor")
-  {
-    payloadStr.toCharArray(charArray, 8);
-    bedColor = toIntColor(charArray);
-    colorWipe(bedColor, 20, 0, 101);
-  }
-  //--------------------------------------------------------------------------------
-  else if (topicStr == "temp")
-  {
+    ArduinoOTA.handle();
     
+    if(!client.loop()) //No connection with mqtt server
+    {
+      if(Ping.ping(ipToPing, 1)) //There is internet connection
+      {
+        mqttReconnect();
+      }
+    }
   }
-  //--------------------------------------------------------------------------------
-  else if (topicStr == "termostat")
+  else
   {
-    if (payloadStr.toFloat() > 0 && payloadStr.toFloat() < 40) //Validate
+    if (millis() >= reconAlarm)
     {
-      termostat = payloadStr.toFloat();
-      setHeatMode(2, 1);
-    }
-    else
-    {
-      termostat = 0;
-      setHeatMode(0, 1);
-    }
-  }
-  //--------------------------------------------------------------------------------
-  else if (topicStr == "b5")
-  {
-    if (payloadStr == "1")
-    {
-      digitalWrite(supplyPin, LOW);
-    }
-    else if (payloadStr == "0")
-    {
-      digitalWrite(supplyPin, HIGH);
-    }
-  }
-  //--------------------------------------------------------------------------------
-  else if (topicStr == "heatControl")
-  {
-    if (payloadStr == "cold")
-    {
-      setHeatMode(0, 0);
-    }
-    else if (payloadStr == "heat")
-    {
-      setHeatMode(1, 0);
-    }
-    else if (payloadStr == "auto")
-    {
-      setHeatMode(2, 0);
-    }
-    else if (payloadStr == "heatup")
-    {
-      setHeatMode(3, 0);
-    }
-    else
-    {
-      setHeatMode(0, 0);
-    }
-  }
-  else if (topicStr == "bedAnim")
-  {
-    anim = payloadStr.toInt();
-  }
+      reconAlarm = millis() + RECON_FREQ;
 
-  eepromPut();
+      WiFi.disconnect();
+      WiFi.begin(ssid, password);
+    }
+  }
 }
 
-void reconnect()
+void mqttReconnect()
 {
   //Create a random client ID
   String clientId = "ESP32Client-";
@@ -290,6 +230,7 @@ void reconnect()
   }
 }
 
+//-------------------------------------------------------------------------------- Strip functions
 void colorWipe(uint32_t color, int wait, int first, int last)
 {
   for (int i = first; i < last; i++)
@@ -394,7 +335,6 @@ void bpm()
     FastLED.show();
   }
 }
-//--------------------------------------------------------------------------------
 
 int toIntColor(char hexColor[])
 {
@@ -421,7 +361,7 @@ int toIntColor(char hexColor[])
 void setHeatMode(int m, bool pub)
 {
   switch (m)
-    //Cold --------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------- Cold 
   case 0:
   {
     heatMode = 0;
@@ -431,7 +371,7 @@ void setHeatMode(int m, bool pub)
       client.publish("heatControl", "cold");
     }
     break;
-    //Heat --------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------- Heat
   case 1:
     heatMode = 1;
     valve(1);
@@ -440,7 +380,7 @@ void setHeatMode(int m, bool pub)
       client.publish("heatControl", "heat");
     }
     break;
-    //Auto --------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------- Auto
   case 2:
     heatMode = 2;
     valve(0);
@@ -449,9 +389,9 @@ void setHeatMode(int m, bool pub)
       client.publish("heatControl", "auto");
     }
     break;
-    //Heat up --------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------- Heat up
   case 3:
-    heatUpAlarm = millis() + heatUpFreq; //Set alarm to turn off valve
+    heatUpAlarm = millis() + TEMP_RECEIVED_FREQ; //Set alarm to turn off valve
     heatMode = 3;
     valve(1);
     if (pub)
@@ -467,13 +407,13 @@ void valve(bool pos)
   if (pos && !valveS)
   {
     valveS = pos;
-    digitalWrite(heatPin , LOW);
+    digitalWrite(VALVE_PIN , LOW);
     client.publish("valve", "1");
   }
   else if (!pos && valveS)
   {
     valveS = pos;
-    digitalWrite(heatPin , HIGH);
+    digitalWrite(VALVE_PIN , HIGH);
     client.publish("valve", "0");
   }
 }
@@ -494,57 +434,83 @@ void eepromGet()
   termostat = preferences.getFloat("termst", 0);
 }
 
-void conErrorHandle()
+void mqttCallback(char* topic, byte* payload, unsigned int length)
 {
-//Check mqtt connection --------------------------------------------------------------------------------
-  if (client.loop())
+  String topicStr = String(topic);
+  String payloadStr = "";
+  
+  for (int i = 0; i < length; i++)
   {
-    mqttRecAtm = 0; //If fine reset reconnection atempts counter
+    payloadStr += (char)payload[i];
   }
-  else if (millis() >= mqttRecAlarm)
-  {
-    mqttRecAlarm = millis() + mqttRecFreq;
-    if (mqttRecAtm >= mqttRec) //After mqttRec tries restart esp.
-    {
-      eepromPut();
-      ESP.restart();
-    }
-    else //Reconnect
-    {
-      mqttRecAtm++;
-      reconnect();
-    }
-  }
-//Check wifi connection --------------------------------------------------------------------------------
-  if (WiFi.status() == WL_CONNECTED)
-  {
-    wifiRecAtm = 0; //If fine reset reconnection atempts counter
-  }
-  else if (millis() >= wifiRecAlarm) //Wait for wifiRecAlarm
-  {
-    wifiRecAlarm = millis() + wifiRecFreq;
-    if (wifiRecAtm >= wifiRec) //After wifiRec tries restart esp.
-    {
-      eepromPut();
-      ESP.restart();
-    }
-    else //Reconnect
-    {
-      wifiRecAtm++;
-      WiFi.begin(ssid, password);
-    }
-  }
-}
 
-void flash()
-{
-  for (int i = 0; i < 6; i++)
+  if (topicStr == "bedColor")
   {
-    digitalWrite(2, HIGH);
-    delay(200);
-    digitalWrite(2, LOW);
-    delay(200);
+    payloadStr.toCharArray(charArray, 8);
+    bedColor = toIntColor(charArray);
+    colorWipe(bedColor, 20, 0, 101);
   }
+  //--------------------------------------------------------------------------------
+  else if (topicStr == "temp")
+  {
+    
+  }
+  //--------------------------------------------------------------------------------
+  else if (topicStr == "termostat")
+  {
+    if (payloadStr.toFloat() > 0 && payloadStr.toFloat() < 40) //Validate
+    {
+      termostat = payloadStr.toFloat();
+      setHeatMode(2, 1);
+    }
+    else
+    {
+      termostat = 0;
+      setHeatMode(0, 1);
+    }
+  }
+  //--------------------------------------------------------------------------------
+  else if (topicStr == "b5")
+  {
+    if (payloadStr == "1")
+    {
+      digitalWrite(SUPPLY_PIN, LOW);
+    }
+    else if (payloadStr == "0")
+    {
+      digitalWrite(SUPPLY_PIN, HIGH);
+    }
+  }
+  //--------------------------------------------------------------------------------
+  else if (topicStr == "heatControl")
+  {
+    if (payloadStr == "cold")
+    {
+      setHeatMode(0, 0);
+    }
+    else if (payloadStr == "heat")
+    {
+      setHeatMode(1, 0);
+    }
+    else if (payloadStr == "auto")
+    {
+      setHeatMode(2, 0);
+    }
+    else if (payloadStr == "heatup")
+    {
+      setHeatMode(3, 0);
+    }
+    else
+    {
+      setHeatMode(0, 0);
+    }
+  }
+  else if (topicStr == "bedAnim")
+  {
+    anim = payloadStr.toInt();
+  }
+
+  eepromPut();
 }
 
 void udpCallback(String command)
@@ -594,7 +560,7 @@ void udpCallback(String command)
   {
     if (parmB.toFloat() > 0 && parmB.toFloat() < 40) //Validate
     {
-      tempReceivedAlarm = millis() + tempReceivedFreq; //Update temperature reset alarm
+      tempReceivedAlarm = millis() + TEMP_RECEIVED_FREQ; //Update temperature reset alarm
       temperature = parmB.toFloat();
     }
     else
@@ -618,6 +584,7 @@ void udpCallback(String command)
   else if(parmA == "term") //Set termostat
   {
     termostat = parmB.toFloat();
+    eepromPut();
   }
   else if(parmA == "rst")
   {
@@ -631,11 +598,11 @@ void udpCallback(String command)
   {
     if(parmB == "on")
     {
-      digitalWrite(supplyPin, LOW);
+      digitalWrite(SUPPLY_PIN, LOW);
     }
     else if(parmB == "off")
     {
-      digitalWrite(supplyPin, HIGH);
+      digitalWrite(SUPPLY_PIN, HIGH);
     }
   }
   else if(parmA == "heat")
@@ -660,7 +627,6 @@ void udpCallback(String command)
     {
       setHeatMode(0, 0);
     }
+    eepromPut();
   }
-
-  eepromPut();
 }
