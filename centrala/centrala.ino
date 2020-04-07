@@ -1,5 +1,6 @@
 //Variables
 #define FRAMES_PER_SECOND 120
+#define BUTTON_SLEEP 50 //Ignore button state after change
 
 #define STRIP_LEN_L 78
 #define STRIP_LEN_P 78
@@ -13,7 +14,8 @@
 
 //Alarms
 #define UPDATE_FREQ 10000
-#define RECON_FREQ 10000
+#define WIFI_RECON_FREQ 30000
+#define MQTT_RECON_FREQ 30000
 
 #define MQTT_PORT 11045
 #define MQTT_USER "derwsywl"
@@ -60,17 +62,45 @@ AsyncUDP udp;
 WiFiClient wifiClient;
 PubSubClient client(wifiClient);
 
-double buttonsTs[5] {0, 0, 0, 0, 0}; //Timestamp to last change
-int buttons[5][5] =
-{{27, 0, 0, 0, 0},
-{26, 0, 0, 0, 0},
-{25, 0, 0, 0, 0},
-{33, 0, 0, 0, 0},
-{32, 0, 0, 0, 0}};
-//Pin, state, filtered, ascending, descending
+//-------------------------------------------------------------------------------- Status
+
+//History off buttons state up to 10 changes
+long buttonsHistoryTimestamp[5][10] = 
+  {{0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0}};
+  
+bool buttonsHistoryState[5][10] =
+  {{0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0}};
+
+int buttons[5][4] =
+  {{27, 0, 0, 0},
+  {26, 0, 0, 0},
+  {25, 0, 0, 0},
+  {33, 0, 0, 0},
+  {32, 0, 0, 0}};
+  //Pin, state, ascending, descending (now)
+  
+char charArray[8];
+uint8_t gHue;
+long updateAlarm;
+long wifiReconAlarm;
+long mqttReconAlarm;
+byte anim;
+bool c5;
+bool c12;
+bool topBar;
 
 void setup()
 {
+  Serial.begin(115200);
+  
   for(int i=0; i<=4; i++)
   {
     pinMode(buttons[i][0], INPUT_PULLUP);
@@ -161,17 +191,6 @@ void setup()
   bme.begin();
 }
 
-
-//Status
-char charArray[8];
-uint8_t gHue;
-long updateAlarm;
-long reconAlarm;
-byte anim;
-bool c5;
-bool c12;
-bool topBar;
-
 void loop()
 {
   conErrorHandle(); //OTA and connection maintenance
@@ -184,9 +203,7 @@ void loop()
   {
     updateAlarm = millis() + UPDATE_FREQ;
 
-    char toSend[20];
-    snprintf(toSend, 20, "glbair;%f;%f;%f;", temp, humi, pres);
-    udp.broadcastTo(toSend, 54091);
+    sendBrodcast("glb", "air", String(temp), String(humi), String(pres));
     
     String(temp).toCharArray(charArray, 8);
     client.publish("temp", charArray);
@@ -201,8 +218,8 @@ void loop()
   buttonsHandle();
   
   //Top bar control
-  if(buttons[3][3] && !buttons[0][2] && !buttons[1][2] && !buttons[2][2] && !buttons[4][2])
-  {    
+  if(buttons[3][2] && !buttons[0][1] && !buttons[1][1] && !buttons[2][1] && !buttons[4][1])
+  {
     if(topBar)
     {
       topBar = 0;
@@ -217,54 +234,64 @@ void loop()
       digitalWrite(4, LOW);
       client.publish("c12", "1");
     }
+
+    delay(100);
   }
 
   //Fan control //0(0) 1-160(1) 161-175(X) 176-335(2) 336-350(X) 351-511(3)
-  if(buttons[2][3] && !buttons[0][2] && !buttons[1][2] && !buttons[3][2] && !buttons[4][2])
+  if(buttons[2][2] && !buttons[0][1] && !buttons[1][1] && !buttons[3][1] && !buttons[4][1])
   {
     int poten = analogRead(34);
     if(poten == 0)
     {
       client.publish("fan", "0");
+      sendBrodcast("wen", "gear", String("0"), String(""), String(""));
     }
     else if(poten >= 1 && poten <= 160)
     {
       client.publish("fan", "1");
+      sendBrodcast("wen", "gear", String("1"), String(""), String(""));
     }
     else if(poten >= 176 && poten <= 335)
     {
       client.publish("fan", "2");
+      sendBrodcast("wen", "gear", String("2"), String(""), String(""));
     }
     else if(poten >= 351 && poten <= 511)
     {
       client.publish("fan", "3");
+      sendBrodcast("wen", "gear", String("3"), String(""), String(""));
     }
   }
   
   //Heating control
-  if(buttons[0][3] && !buttons[1][2] && !buttons[2][2] && !buttons[3][2] && !buttons[4][2])
+  if(buttons[0][2] && !buttons[1][1] && !buttons[2][1] && !buttons[3][1] && !buttons[4][1])
   {
     int poten = analogRead(34);
     if(poten == 0)
     {
       client.publish("heatControl", "cold");
+      sendBrodcast("wen", "heat", String("cold"), String(""), String(""));
     }
     else if(poten >= 1 && poten <= 160)
     {
       client.publish("heatControl", "auto");
+      sendBrodcast("wen", "heat", String("auto"), String(""), String(""));
     }
     else if(poten >= 176 && poten <= 335)
     {
       client.publish("heatControl", "heatup");
+      sendBrodcast("wen", "heat", String("heatup"), String(""), String(""));
     }
     else if(poten >= 351 && poten <= 511)
     {
       client.publish("heatControl", "heat");
+      sendBrodcast("wen", "heat", String("heat"), String(""), String(""));
     }
   }
 
   //Restart
-  if(analogRead(34) == 0 && buttons[0][2] && buttons[1][2] && buttons[2][2] && buttons[3][2] && buttons[4][1])
+  if(analogRead(34) == 0 && buttons[0][1] && buttons[1][1] && buttons[2][1] && buttons[3][1] && buttons[4][1])
   {
     ESP.restart();
   }
@@ -276,11 +303,13 @@ void loop()
   sinelon();
   bpm();
 
-  FastLED.delay(1000 / FRAMES_PER_SECOND);
+  delay(1000 / FRAMES_PER_SECOND);
   EVERY_N_MILLISECONDS(20)
   {
     gHue++;
   }
+
+  Serial.println(buttons[4][2]);
 }
 
 void conErrorHandle()
@@ -291,17 +320,22 @@ void conErrorHandle()
     
     if(!client.loop()) //No connection with mqtt server
     {
-      if(Ping.ping(ipToPing, 1)) //No internet connection
+      if (millis() >= mqttReconAlarm)
       {
-        mqttReconnect();
+        mqttReconAlarm = millis() + MQTT_RECON_FREQ;
+        
+        if(Ping.ping(ipToPing, 1)) //There is internet connection
+        {
+          mqttReconnect();
+        }
       }
     }
   }
   else
   {
-    if (millis() >= reconAlarm)
+    if (millis() >= wifiReconAlarm)
     {
-      reconAlarm = millis() + RECON_FREQ;
+      wifiReconAlarm = millis() + WIFI_RECON_FREQ;
 
       WiFi.disconnect();
       WiFi.begin(ssid, password);
@@ -327,36 +361,50 @@ void mqttReconnect()
   }
 }
 
+void sendBrodcast(char* adr, char* cmd, String a, String b, String c)
+{
+  char toSend[40];
+  snprintf(toSend, 40, "%s%s;%s;%s;%s;", adr, cmd, a, b, c);
+  udp.broadcastTo(toSend, 54091);
+}
+
 void buttonsHandle()
 {
   for (int i = 0; i < 5; i++)
   {
-    bool state = !digitalRead(buttons[i][0]);
-
     //Clear states
+    buttons[i][2] = 0;
     buttons[i][3] = 0;
-    buttons[i][4] = 0;
     
+    if(buttonsHistoryTimestamp[i][0] + BUTTON_SLEEP > millis())
+    {
+      continue;
+    }
+    
+    bool state = !digitalRead(buttons[i][0]);
     if (buttons[i][1] != state)
     {
-      buttons[i][1] = state; //Real state
-      buttonsTs[i] = millis(); //Timestamp to last change
-    }
-
-    if(millis() - buttonsTs[i] > 20 && buttonsTs[i] != 0)
-    {
-      buttonsTs[i] = 0;
-      buttons[i][2] = state; //Filtered state
-      
       if (state)
       {
-        buttons[i][3] = 1; //Ascending
+        buttons[i][2] = 1; //Ascending
       }
       else
       {
-        buttons[i][4] = 1; //Descending
+        buttons[i][3] = 1; //Descending
       }
+
+      //Shift array
+      for(int ii = 9; ii>0; ii--)
+      {
+        buttonsHistoryTimestamp[i][ii] = buttonsHistoryTimestamp[i][ii-1];
+        buttonsHistoryState[i][ii] = buttonsHistoryState[i][ii-1];
+      }
+  
+      buttonsHistoryTimestamp[i][0] = millis();
+      buttonsHistoryState[i][0] = state;
     }
+
+    buttons[i][1] = state;
   }
 }
 

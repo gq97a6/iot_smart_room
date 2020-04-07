@@ -9,7 +9,8 @@
 
 #define TEMP_RECEIVED_FREQ 20000
 #define HEATUP_FREQ 180000
-#define RECON_FREQ 10000
+#define WIFI_RECON_FREQ 30000
+#define MQTT_RECON_FREQ 30000
 
 //After WIFI_REC times, give up reconnecting and restart esp
 #define WIFI_REC 5
@@ -52,6 +53,21 @@ AsyncUDP udp;
 WiFiClient wifiClient;
 PubSubClient client(wifiClient);
 
+//Status
+char charArray[8];
+uint8_t gHue;
+int bedColor;
+byte anim;
+bool b5;
+int heatMode; //Cold(0), Heat(1), Auto(2), Heat up(3)
+float temperature;
+float termostat;
+bool valveS;
+long tempReceivedAlarm;
+long heatUpAlarm;
+long wifiReconAlarm;
+long mqttReconAlarm;
+
 void setup()
 {
   preferences.begin("memory", false);
@@ -60,9 +76,11 @@ void setup()
   pinMode(VALVE_PIN, OUTPUT);
   pinMode(SUPPLY_PIN, OUTPUT);
   
-  valve(0);
+  digitalWrite(VALVE_PIN, HIGH);
   digitalWrite(SUPPLY_PIN, HIGH);
 
+  setHeatMode(heatMode, 0);
+  
   FastLED.addLeds<WS2812B, STRIP_PIN, GRB>(strip, STRIP_LEN).setCorrection(TypicalLEDStrip);
   FastLED.setBrightness(255);
 
@@ -125,20 +143,6 @@ void setup()
   ArduinoOTA.begin();
 }
 
-//Status
-char charArray[8];
-uint8_t gHue;
-int bedColor;
-byte anim;
-bool b5;
-int heatMode; //Cold(0), Heat(1), Auto(2), Heat up(3)
-float temperature;
-float termostat;
-bool valveS;
-long tempReceivedAlarm;
-long heatUpAlarm;
-long reconAlarm;
-
 void loop()
 {
   conErrorHandle();
@@ -175,7 +179,7 @@ void loop()
   sinelon();
   bpm();
 
-  FastLED.delay(1000 / FRAMES_PER_SECOND);
+  delay(1000 / FRAMES_PER_SECOND);
   EVERY_N_MILLISECONDS(20)
   {
     gHue++;
@@ -190,17 +194,22 @@ void conErrorHandle()
     
     if(!client.loop()) //No connection with mqtt server
     {
-      if(Ping.ping(ipToPing, 1)) //There is internet connection
+      if (millis() >= mqttReconAlarm)
       {
-        mqttReconnect();
+        mqttReconAlarm = millis() + MQTT_RECON_FREQ;
+        
+        if(Ping.ping(ipToPing, 1)) //There is internet connection
+        {
+          mqttReconnect();
+        }
       }
     }
   }
   else
   {
-    if (millis() >= reconAlarm)
+    if (millis() >= wifiReconAlarm)
     {
-      reconAlarm = millis() + RECON_FREQ;
+      wifiReconAlarm = millis() + WIFI_RECON_FREQ;
 
       WiFi.disconnect();
       WiFi.begin(ssid, password);
@@ -224,8 +233,6 @@ void mqttReconnect()
     client.subscribe("termostat");
     client.subscribe("temp");
     client.subscribe("b5");
-    client.subscribe("terminal");
-    client.subscribe("update");
     client.subscribe("bedAnim");
   }
 }

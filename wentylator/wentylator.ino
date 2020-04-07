@@ -1,4 +1,5 @@
-#define RECON_FREQ 10000
+#define WIFI_RECON_FREQ 30000
+#define MQTT_RECON_FREQ 30000
 
 #define MQTT_PORT 11045
 #define MQTT_USER "derwsywl"
@@ -28,6 +29,10 @@ AsyncUDP udp;
 
 WiFiClient wifiClient;
 PubSubClient client(wifiClient);
+
+//Status
+long wifiReconAlarm;
+long mqttReconAlarm;
 
 void setup()
 {
@@ -110,9 +115,6 @@ void setup()
   ArduinoOTA.begin();
 }
 
-//Status
-long reconAlarm;
-
 void loop()
 {
   conErrorHandle();
@@ -126,17 +128,22 @@ void conErrorHandle()
     
     if(!client.loop()) //No connection with mqtt server
     {
-      if(Ping.ping(ipToPing, 1)) //No internet connection
+      if (millis() >= mqttReconAlarm)
       {
-        mqttReconnect();
+        mqttReconAlarm = millis() + MQTT_RECON_FREQ;
+        
+        if(Ping.ping(ipToPing, 1)) //There is internet connection
+        {
+          mqttReconnect();
+        }
       }
     }
   }
   else
   {
-    if (millis() >= reconAlarm)
+    if (millis() >= wifiReconAlarm)
     {
-      reconAlarm = millis() + RECON_FREQ;
+      wifiReconAlarm = millis() + WIFI_RECON_FREQ;
 
       WiFi.disconnect();
       WiFi.begin(ssid, password);
