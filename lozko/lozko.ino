@@ -79,7 +79,7 @@ void setup()
   digitalWrite(VALVE_PIN, HIGH);
   digitalWrite(SUPPLY_PIN, HIGH);
 
-  setHeatMode(heatMode, 0);
+  setHeatMode(heatMode);
   
   FastLED.addLeds<WS2812B, STRIP_PIN, GRB>(strip, STRIP_LEN).setCorrection(CRGB(255,255,255));
   FastLED.setBrightness(255);
@@ -135,7 +135,7 @@ void setup()
         {
           cmd += (char)packet.data()[i];
         }
-        udpCallback(cmd);
+        terminal(cmd);
       }
     });
   }
@@ -168,7 +168,7 @@ void loop()
   {
     if (millis() >= heatUpAlarm)//Turn off alarm
     {
-      setHeatMode(0, 1);
+      setHeatMode(0);
     }
   }
 
@@ -227,12 +227,11 @@ void mqttReconnect()
   if (client.connect(clientId.c_str(), MQTT_USER, MQTT_PASSWORD))
   {
     //Subscribe list
-    client.subscribe("bedColor");
-    client.subscribe("heatControl");
-    client.subscribe("termostat");
-    client.subscribe("temp");
-    client.subscribe("b5");
-    client.subscribe("bedAnim");
+    client.subscribe("lozcwip;");
+    client.subscribe("lozheat;");
+    client.subscribe("lozterm;");
+    client.subscribe("loz5;");
+    client.subscribe("lozanim;");
   }
 }
 
@@ -364,7 +363,7 @@ int toIntColor(char hexColor[])
   return color;
 }
 
-void setHeatMode(int m, bool pub)
+void setHeatMode(int m)
 {
   switch (m)
 //-------------------------------------------------------------------------------- Cold 
@@ -372,38 +371,22 @@ void setHeatMode(int m, bool pub)
   {
     heatMode = 0;
     valve(0);
-    if (pub)
-    {
-      client.publish("heatControl", "cold");
-    }
     break;
 //-------------------------------------------------------------------------------- Heat
   case 1:
     heatMode = 1;
     valve(1);
-    if (pub)
-    {
-      client.publish("heatControl", "heat");
-    }
     break;
 //-------------------------------------------------------------------------------- Auto
   case 2:
     heatMode = 2;
     valve(0);
-    if (pub)
-    {
-      client.publish("heatControl", "auto");
-    }
     break;
 //-------------------------------------------------------------------------------- Heat up
   case 3:
     heatUpAlarm = millis() + TEMP_RECEIVED_FREQ; //Set alarm to turn off valve
     heatMode = 3;
     valve(1);
-    if (pub)
-    {
-      client.publish("heatControl", "heatup");
-    }
     break;
   }
 }
@@ -442,84 +425,32 @@ void eepromGet()
 
 void mqttCallback(char* topic, byte* payload, unsigned int length)
 {
-  String topicStr = String(topic);
-  String payloadStr = "";
+  String cmd = "";
+
+  int i = 3;
+  while(true)
+  {
+    cmd += topic[i];
+    
+    if(topic[i] == ';')
+    {
+      break;
+    }
+    
+    i++;
+  }
   
   for (int i = 0; i < length; i++)
   {
-    payloadStr += (char)payload[i];
+    cmd += (char)payload[i];
   }
-
-  if (topicStr == "bedColor")
-  {
-    payloadStr.toCharArray(charArray, 8);
-    bedColor = toIntColor(charArray);
-    colorWipe(bedColor, 20, 0, 101);
-  }
-  //--------------------------------------------------------------------------------
-  else if (topicStr == "temp")
-  {
-    
-  }
-  //--------------------------------------------------------------------------------
-  else if (topicStr == "termostat")
-  {
-    if (payloadStr.toFloat() > 0 && payloadStr.toFloat() < 40) //Validate
-    {
-      termostat = payloadStr.toFloat();
-      setHeatMode(2, 1);
-    }
-    else
-    {
-      termostat = 0;
-      setHeatMode(0, 1);
-    }
-  }
-  //--------------------------------------------------------------------------------
-  else if (topicStr == "b5")
-  {
-    if (payloadStr == "1")
-    {
-      digitalWrite(SUPPLY_PIN, LOW);
-    }
-    else if (payloadStr == "0")
-    {
-      digitalWrite(SUPPLY_PIN, HIGH);
-    }
-  }
-  //--------------------------------------------------------------------------------
-  else if (topicStr == "heatControl")
-  {
-    if (payloadStr == "cold")
-    {
-      setHeatMode(0, 0);
-    }
-    else if (payloadStr == "heat")
-    {
-      setHeatMode(1, 0);
-    }
-    else if (payloadStr == "auto")
-    {
-      setHeatMode(2, 0);
-    }
-    else if (payloadStr == "heatup")
-    {
-      setHeatMode(3, 0);
-    }
-    else
-    {
-      setHeatMode(0, 0);
-    }
-  }
-  else if (topicStr == "bedAnim")
-  {
-    anim = payloadStr.toInt();
-  }
-
-  eepromPut();
+  
+  cmd += ";;;";
+  
+  terminal(cmd);
 }
 
-void udpCallback(String command)
+void terminal(String command)
 {
   String parmA = "";
   String parmB = "";
@@ -576,10 +507,14 @@ void udpCallback(String command)
   }
   else if(parmA == "cwip") //Set one color for whole strip
   {
-    for (int i = 0; i < 101; i++)
+    parmB.toCharArray(charArray, 8);
+    int color = toIntColor(charArray);
+    
+    for (int i = 0; i < STRIP_LEN; i++)
     {
-      strip[i] = parmB.toInt();
+      strip[i] = color;
     }
+    
     FastLED.show();
   }
   else if(parmA == "shw")
@@ -588,8 +523,8 @@ void udpCallback(String command)
   }
   else if(parmA == "setd") //Set color of one diode
   {
-    strip[parmC.toInt()] = parmB.toInt();
-    FastLED.show();
+    parmB.toCharArray(charArray, 8);
+    strip[parmC.toInt()] = toIntColor(charArray);
   }
   else if(parmA == "term") //Set termostat
   {
@@ -606,11 +541,11 @@ void udpCallback(String command)
   }
   else if(parmA == "5") //5V power supply
   {
-    if(parmB == "on")
+    if(parmB == "1")
     {
       digitalWrite(SUPPLY_PIN, LOW);
     }
-    else if(parmB == "off")
+    else if(parmB == "0")
     {
       digitalWrite(SUPPLY_PIN, HIGH);
     }
@@ -619,23 +554,23 @@ void udpCallback(String command)
   {
     if (parmB == "cold")
     {
-      setHeatMode(0, 0);
+      setHeatMode(0);
     }
     else if (parmB == "heat")
     {
-      setHeatMode(1, 0);
+      setHeatMode(1);
     }
     else if (parmB == "auto")
     {
-      setHeatMode(2, 0);
+      setHeatMode(2);
     }
     else if (parmB == "heatup")
     {
-      setHeatMode(3, 0);
+      setHeatMode(3);
     }
     else
     {
-      setHeatMode(0, 0);
+      setHeatMode(0);
     }
     eepromPut();
   }

@@ -184,7 +184,8 @@ void setup()
         {
           cmd += (char)packet.data()[i];
         }
-        udpCallback(cmd);
+        
+        terminal(cmd);
       }
     });
   }
@@ -228,14 +229,12 @@ void loop()
       topBar = 0;
       c12 = 0;
       digitalWrite(SUPPLY_12_PIN, HIGH);
-      client.publish("c12", "0");
     }
     else
     {
       topBar = 1;
       c12 = 1;
       digitalWrite(SUPPLY_12_PIN, LOW);
-      client.publish("c12", "1");
     }
   }
 
@@ -246,23 +245,23 @@ void loop()
     int poten = analogRead(POTEN_PIN);
     if(poten == 0)
     {
-      client.publish("fan", "0");
-      sendBrodcast("wen", "gear", String("0"), String(""), String(""));
+      client.publish("wenfan;", "0");
+      sendBrodcast("wen", "fan", String("0"), String(""), String(""));
     }
     else if(poten >= 1 && poten <= 160)
     {
-      client.publish("fan", "1");
-      sendBrodcast("wen", "gear", String("1"), String(""), String(""));
+      client.publish("wenfan;", "1");
+      sendBrodcast("wen", "fan", String("1"), String(""), String(""));
     }
     else if(poten >= 176 && poten <= 335)
     {
-      client.publish("fan", "2");
-      sendBrodcast("wen", "gear", String("2"), String(""), String(""));
+      client.publish("wenfan;", "2");
+      sendBrodcast("wen", "fan", String("2"), String(""), String(""));
     }
     else if(poten >= 351 && poten <= 511)
     {
-      client.publish("fan", "3");
-      sendBrodcast("wen", "gear", String("3"), String(""), String(""));
+      client.publish("wenfan;", "3");
+      sendBrodcast("wen", "fan", String("3"), String(""), String(""));
     }
   }
   
@@ -273,22 +272,18 @@ void loop()
     int poten = analogRead(POTEN_PIN);
     if(poten == 0)
     {
-      client.publish("heatControl", "cold");
       sendBrodcast("wen", "heat", String("cold"), String(""), String(""));
     }
     else if(poten >= 1 && poten <= 160)
     {
-      client.publish("heatControl", "auto");
       sendBrodcast("wen", "heat", String("auto"), String(""), String(""));
     }
     else if(poten >= 176 && poten <= 335)
     {
-      client.publish("heatControl", "heatup");
       sendBrodcast("wen", "heat", String("heatup"), String(""), String(""));
     }
     else if(poten >= 351 && poten <= 511)
     {
-      client.publish("heatControl", "heat");
       sendBrodcast("wen", "heat", String("heat"), String(""), String(""));
     }
   }
@@ -297,11 +292,11 @@ void loop()
   if(millis() - buttonsHistoryTimestamp[4][0] > 3000 && buttonsHistoryState[4][0] && 
   !buttons[0][1] && !buttons[1][1] && !buttons[2][1] && !buttons[3][1])
   {
-    client.publish("b5", "0");
-    client.publish("fan", "0");
+    client.publish("loz5;", "0");
+    client.publish("wenfan;", "0");
     
     sendBrodcast("loz", "5", String("off"), String(""), String(""));
-    sendBrodcast("wen", "gear", String("0"), String(""), String(""));
+    sendBrodcast("wen", "fan", String("0"), String(""), String(""));
 
     c5 = 0;
     digitalWrite(SUPPLY_12_PIN, HIGH);
@@ -330,7 +325,7 @@ void loop()
     }
     else if(poten >= 1 && poten <= 160) //b5
     {
-      client.publish("b5", "1");
+      client.publish("loz5;", "1");
       sendBrodcast("loz", "5", String("on"), String(""), String(""));
     }
     else if(poten >= 176 && poten <= 335) //c12
@@ -344,7 +339,7 @@ void loop()
       c5 = 1;
       digitalWrite(SUPPLY_5_PIN, LOW);
       
-      client.publish("b5", "1");
+      client.publish("loz5;", "1");
       sendBrodcast("loz", "5", String("on"), String(""), String(""));
 
       delay(1000);
@@ -365,7 +360,7 @@ void loop()
     }
     else if(poten >= 1 && poten <= 160) //b5
     {
-      client.publish("b5", "0");
+      client.publish("loz5;", "0");
       sendBrodcast("loz", "5", String("off"), String(""), String(""));
     }
     else if(poten >= 176 && poten <= 335) //c12
@@ -379,7 +374,7 @@ void loop()
       c5 = 0;
       digitalWrite(SUPPLY_5_PIN, HIGH);
       
-      client.publish("b5", "0");
+      client.publish("loz5;", "0");
       sendBrodcast("loz", "5", String("off"), String(""), String(""));
     }
   }
@@ -445,11 +440,10 @@ void mqttReconnect()
   if (client.connect(clientId.c_str(), MQTT_USER, MQTT_PASSWORD))
   {
     //Subscribe list
-    client.subscribe("topBar");
-    client.subscribe("deskColor");
-    client.subscribe("deskAnim");
-    client.subscribe("c12");
-    client.subscribe("c5");
+    client.subscribe("cen5;");
+    client.subscribe("cen12;");
+    client.subscribe("cencwip;");
+    client.subscribe("cenanim;");
   }
 }
 
@@ -654,73 +648,32 @@ int toIntColor(char hexColor[])
 
 void mqttCallback(char* topic, byte* payload, unsigned int length)
 {
-  String topicStr = String(topic);
-  String payloadStr = "";
+  String cmd = "";
+
+  int i = 3;
+  while(true)
+  {
+    cmd += topic[i];
+    
+    if(topic[i] == ';')
+    {
+      break;
+    }
+    
+    i++;
+  }
   
   for (int i = 0; i < length; i++)
   {
-    payloadStr += (char)payload[i];
+    cmd += (char)payload[i];
   }
   
-//--------------------------------------------------------------------------------
-  if (topicStr == "c12")
-  {
-    if (payloadStr == "1")
-    {
-      c12 = 1;
-      digitalWrite(SUPPLY_12_PIN, LOW);
-    }
-    else if (payloadStr == "0")
-    {
-      c12 = 0;
-      digitalWrite(SUPPLY_12_PIN, HIGH);
-    }
-  }
-//--------------------------------------------------------------------------------
-  else if (topicStr == "c5")
-  {
-    if (payloadStr == "1")
-    {
-      c5 = 1;
-      digitalWrite(SUPPLY_5_PIN, LOW);
-    }
-    else if (payloadStr == "0")
-    {
-      c5 = 0;
-      digitalWrite(SUPPLY_5_PIN, HIGH);
-    }
-  }
-//--------------------------------------------------------------------------------
-  else if (topicStr == "topBar")
-  {
-    if (payloadStr == "1")
-    {
-      topBar = 1;
-      c12 = 1;
-      client.publish("c12", "1");
-      digitalWrite(SUPPLY_12_PIN, LOW);
-    }
-    else if (payloadStr == "0")
-    {
-      topBar = 0;
-      c12 = 0;
-      client.publish("c12", "0");
-      digitalWrite(SUPPLY_12_PIN, HIGH);
-    }
-  }
-//--------------------------------------------------------------------------------
-  else if (topicStr == "deskColor")
-  {
-    payloadStr.toCharArray(charArray, 8);
-    colorWipe(toIntColor(charArray), 20, 0, 77);
-  }
-  else if (topicStr == "deskAnim")
-  {
-    anim = payloadStr.toInt();
-  }
+  cmd += ";;;";
+  
+  terminal(cmd);
 }
 
-void udpCallback(String command)
+void terminal(String command)
 {
   String parmA = "";
   String parmB = "";
@@ -766,18 +719,27 @@ void udpCallback(String command)
   //-------------------------------------------------------------------------------- Set one color for whole strip
   if(parmA == "cwip")
   {
-    for (int i = 0; i <= 77; i++)
+    parmB.toCharArray(charArray, 8);
+    int color = toIntColor(charArray);
+    
+    for (int i = 0; i < STRIP_LEN_L; i++)
     {
-      stripL[i] = parmB.toInt();
-      stripP[i] = parmB.toInt();
+      stripL[i] = color;
     }
+
+    for (int i = 0; i < STRIP_LEN_P; i++)
+    {
+      stripP[i] = color;
+    }
+    
     FastLED.show();
   }
   //-------------------------------------------------------------------------------- Set color of one diode
   else if(parmA == "setd")
   {
-    stripL[parmC.toInt()] = parmB.toInt();
-    stripP[parmC.toInt()] = parmB.toInt();
+    parmB.toCharArray(charArray, 8);
+    stripL[parmC.toInt()] = toIntColor(charArray);
+    stripP[parmC.toInt()] = toIntColor(charArray);
     
     FastLED.show();
   }
@@ -789,16 +751,16 @@ void udpCallback(String command)
   //--------------------------------------------------------------------------------
   else if(parmA == "anim")
   {
-    byte anim = parmB.toInt();
+    anim = parmB.toInt();
   }
   //-------------------------------------------------------------------------------- 5V power supply
   else if(parmA == "5")
   {
-    if(parmB == "on")
+    if(parmB == "1")
     {
       digitalWrite(SUPPLY_5_PIN, LOW);
     }
-    else if(parmB == "off")
+    else if(parmB == "0")
     {
       digitalWrite(SUPPLY_5_PIN, HIGH);
     }
@@ -806,11 +768,11 @@ void udpCallback(String command)
   //-------------------------------------------------------------------------------- 12V power supply
   else if(parmA == "12")
   {
-    if(parmB == "on")
+    if(parmB == "1")
     {
       digitalWrite(SUPPLY_12_PIN, LOW);
     }
-    else if(parmB == "off")
+    else if(parmB == "0")
     {
       digitalWrite(SUPPLY_12_PIN, HIGH);
     }

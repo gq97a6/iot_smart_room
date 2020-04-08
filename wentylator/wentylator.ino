@@ -105,7 +105,7 @@ void setup()
         {
           cmd += (char)packet.data()[i];
         }
-        udpCallback(cmd);
+        terminal(cmd);
       }
       
       //packet.printf("Got %u bytes of data", packet.length());
@@ -161,8 +161,7 @@ void mqttReconnect()
   if (client.connect(clientId.c_str(), MQTT_USER, MQTT_PASSWORD))
   {
     //Subscribe list
-    client.subscribe("fan");
-    client.subscribe("terminal");
+    client.subscribe("wenfan;");
   }
 }
 
@@ -195,37 +194,32 @@ void setGear(int t)
 
 void mqttCallback(char* topic, byte* payload, unsigned int length)
 {
-  setGear(0); //Safety
+  String cmd = "";
+
+  int i = 3;
+  while(true)
+  {
+    cmd += topic[i];
+    
+    if(topic[i] == ';')
+    {
+      break;
+    }
+    
+    i++;
+  }
   
-  String topicStr = String(topic);
-  String payloadStr = "";
   for (int i = 0; i < length; i++)
   {
-    payloadStr += (char)payload[i];
+    cmd += (char)payload[i];
   }
   
-  if(topicStr == "fan")
-  {
-    switch(payloadStr.toInt())
-    {
-      case 1:
-        setGear(1);
-        break;
-      case 2:
-        setGear(2);
-        break;
-      case 3:
-        setGear(3);
-        break;
-    }
-  }
-  else if(topicStr == "terminal" && payloadStr == "fan restart")
-  {
-    ESP.restart();
-  }
+  cmd += ";;;";
+  
+  terminal(cmd);
 }
 
-void udpCallback(String command)
+void terminal(String command)
 {
   String parmA = "";
   String parmB = "";
@@ -268,7 +262,7 @@ void udpCallback(String command)
     }
   }
 
-  if(parmA == "gear")
+  if(parmA == "fan")
   {
     setGear(parmB.toInt());
   }
