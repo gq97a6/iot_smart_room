@@ -81,7 +81,7 @@ void setup()
 
   setHeatMode(heatMode, 0);
   
-  FastLED.addLeds<WS2812B, STRIP_PIN, GRB>(strip, STRIP_LEN).setCorrection(TypicalLEDStrip);
+  FastLED.addLeds<WS2812B, STRIP_PIN, GRB>(strip, STRIP_LEN).setCorrection(CRGB(255,255,255));
   FastLED.setBrightness(255);
 
   //MQTT
@@ -227,7 +227,6 @@ void mqttReconnect()
   if (client.connect(clientId.c_str(), MQTT_USER, MQTT_PASSWORD))
   {
     //Subscribe list
-    client.subscribe("bedStrip");
     client.subscribe("bedColor");
     client.subscribe("heatControl");
     client.subscribe("termostat");
@@ -575,12 +574,16 @@ void udpCallback(String command)
       temperature = 100;
     }
   }
-  if(parmA == "cwip") //Set one color for whole strip
+  else if(parmA == "cwip") //Set one color for whole strip
   {
     for (int i = 0; i < 101; i++)
     {
       strip[i] = parmB.toInt();
     }
+    FastLED.show();
+  }
+  else if(parmA == "shw")
+  {
     FastLED.show();
   }
   else if(parmA == "setd") //Set color of one diode

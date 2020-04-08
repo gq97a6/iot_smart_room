@@ -1,6 +1,7 @@
 //Variables
 #define FRAMES_PER_SECOND 120
-#define BUTTON_SLEEP 50 //Ignore button state after change
+#define BUTTON_SLEEP 100 //Ignore button state after change
+#define BUTTON_CHECK 50 //Check state every
 
 #define STRIP_LEN_L 78
 #define STRIP_LEN_P 78
@@ -92,6 +93,7 @@ uint8_t gHue;
 long updateAlarm;
 long wifiReconAlarm;
 long mqttReconAlarm;
+long buttonCheckAlarm;
 byte anim;
 bool c5;
 bool c12;
@@ -115,8 +117,8 @@ void setup()
   digitalWrite(15, HIGH);
   digitalWrite(4, HIGH);
   
-  FastLED.addLeds<WS2812B, STRIP_PIN_L, GRB>(stripL, STRIP_LEN_L).setCorrection(TypicalLEDStrip);
-  FastLED.addLeds<WS2812B, STRIP_PIN_P, GRB>(stripP, STRIP_LEN_P).setCorrection(TypicalLEDStrip);
+  FastLED.addLeds<WS2812B, STRIP_PIN_L, GRB>(stripL, STRIP_LEN_L).setCorrection(CRGB(255,255,255));
+  FastLED.addLeds<WS2812B, STRIP_PIN_P, GRB>(stripP, STRIP_LEN_P).setCorrection(CRGB(255,255,255));
   FastLED.setBrightness(255);
 
   //MQTT
@@ -199,9 +201,9 @@ void loop()
   int humi = bme.readHumidity();
   int pres = bme.readPressure() / 100.0F;
 
-  if (millis() >= updateAlarm)
+  if(updateAlarm + UPDATE_FREQ < millis())
   {
-    updateAlarm = millis() + UPDATE_FREQ;
+    updateAlarm = millis();
 
     sendBrodcast("glb", "air", String(temp), String(humi), String(pres));
     
@@ -214,34 +216,34 @@ void loop()
     String(pres).toCharArray(charArray, 8);
     client.publish("pres", charArray);
   }
-  
+
   buttonsHandle();
   
   //Top bar control
-  if(buttons[3][2] && !buttons[0][1] && !buttons[1][1] && !buttons[2][1] && !buttons[4][1])
+  if(buttons[3][2] && 
+  !buttons[0][1] && !buttons[1][1] && !buttons[2][1] && !buttons[4][1])
   {
     if(topBar)
     {
       topBar = 0;
-      bool c12 = 0;
-      digitalWrite(4, HIGH);
+      c12 = 0;
+      digitalWrite(SUPPLY_12_PIN, HIGH);
       client.publish("c12", "0");
     }
     else
     {
       topBar = 1;
-      bool c12 = 1;
-      digitalWrite(4, LOW);
+      c12 = 1;
+      digitalWrite(SUPPLY_12_PIN, LOW);
       client.publish("c12", "1");
     }
-
-    delay(100);
   }
 
-  //Fan control //0(0) 1-160(1) 161-175(X) 176-335(2) 336-350(X) 351-511(3)
-  if(buttons[2][2] && !buttons[0][1] && !buttons[1][1] && !buttons[3][1] && !buttons[4][1])
+  //Fan control //0(gear 0) 1-160(gear 1) 161-175(X) 176-335(gear 2) 336-350(X) 351-511(gear 3)
+  if(buttons[2][3] && 
+  !buttons[0][1] && !buttons[1][1] && !buttons[3][1] && !buttons[4][1])
   {
-    int poten = analogRead(34);
+    int poten = analogRead(POTEN_PIN);
     if(poten == 0)
     {
       client.publish("fan", "0");
@@ -265,9 +267,10 @@ void loop()
   }
   
   //Heating control
-  if(buttons[0][2] && !buttons[1][1] && !buttons[2][1] && !buttons[3][1] && !buttons[4][1])
+  if(buttons[0][2] && 
+  !buttons[1][1] && !buttons[2][1] && !buttons[3][1] && !buttons[4][1])
   {
-    int poten = analogRead(34);
+    int poten = analogRead(POTEN_PIN);
     if(poten == 0)
     {
       client.publish("heatControl", "cold");
@@ -290,8 +293,99 @@ void loop()
     }
   }
 
+  //Blackout
+  if(millis() - buttonsHistoryTimestamp[4][0] > 3000 && buttonsHistoryState[4][0] && 
+  !buttons[0][1] && !buttons[1][1] && !buttons[2][1] && !buttons[3][1])
+  {
+    client.publish("b5", "0");
+    client.publish("fan", "0");
+    
+    sendBrodcast("loz", "5", String("off"), String(""), String(""));
+    sendBrodcast("wen", "gear", String("0"), String(""), String(""));
+
+    c5 = 0;
+    digitalWrite(SUPPLY_12_PIN, HIGH);
+      
+    topBar = 0;
+    c12 = 0;
+    digitalWrite(SUPPLY_5_PIN, HIGH);
+  }
+
+  if(buttons[1][2] && 
+  !buttons[0][1] && !buttons[2][1] && !buttons[3][1] && !buttons[4][1])
+  {
+    FastLED.show();
+    sendBrodcast("loz", "shw", String(""), String(""), String(""));
+  }
+  
+  //Power on
+  if(abs(millis() - buttonsHistoryTimestamp[4][1] - 750) <= 500 && buttonsHistoryState[4][1] && buttons[4][3] &&
+  !buttons[0][1] && !buttons[1][1] && !buttons[2][1] && !buttons[3][1])
+  {
+    int poten = analogRead(POTEN_PIN);
+    if(poten == 0) //c5
+    {
+      c5 = 1;
+      digitalWrite(SUPPLY_5_PIN, LOW);
+    }
+    else if(poten >= 1 && poten <= 160) //b5
+    {
+      client.publish("b5", "1");
+      sendBrodcast("loz", "5", String("on"), String(""), String(""));
+    }
+    else if(poten >= 176 && poten <= 335) //c12
+    {
+      topBar = 1;
+      c12 = 1;
+      digitalWrite(SUPPLY_12_PIN, LOW);
+    }
+    else if(poten >= 351 && poten <= 511)
+    {
+      c5 = 1;
+      digitalWrite(SUPPLY_5_PIN, LOW);
+      
+      client.publish("b5", "1");
+      sendBrodcast("loz", "5", String("on"), String(""), String(""));
+
+      delay(1000);
+      FastLED.show();
+      sendBrodcast("loz", "shw", String(""), String(""), String(""));
+    }
+  }
+
+  //Power off
+  if(abs(millis() - buttonsHistoryTimestamp[4][1] - 200) <= 200 && buttonsHistoryState[4][1] && buttons[4][3] &&
+  !buttons[0][1] && !buttons[1][1] && !buttons[2][1] && !buttons[3][1])
+  {
+    int poten = analogRead(POTEN_PIN);
+    if(poten == 0) //c5
+    {
+      c5 = 0;
+      digitalWrite(SUPPLY_5_PIN, HIGH);
+    }
+    else if(poten >= 1 && poten <= 160) //b5
+    {
+      client.publish("b5", "0");
+      sendBrodcast("loz", "5", String("off"), String(""), String(""));
+    }
+    else if(poten >= 176 && poten <= 335) //c12
+    {
+      topBar = 0;
+      c12 = 0;
+      digitalWrite(SUPPLY_12_PIN, HIGH);
+    }
+    else if(poten >= 351 && poten <= 511)
+    {
+      c5 = 0;
+      digitalWrite(SUPPLY_5_PIN, HIGH);
+      
+      client.publish("b5", "0");
+      sendBrodcast("loz", "5", String("off"), String(""), String(""));
+    }
+  }
+  
   //Restart
-  if(analogRead(34) == 0 && buttons[0][1] && buttons[1][1] && buttons[2][1] && buttons[3][1] && buttons[4][1])
+  if(analogRead(POTEN_PIN) == 0 && buttons[0][1] && buttons[1][1] && buttons[2][1] && buttons[3][1] && buttons[4][1])
   {
     ESP.restart();
   }
@@ -308,8 +402,6 @@ void loop()
   {
     gHue++;
   }
-
-  Serial.println(buttons[4][2]);
 }
 
 void conErrorHandle()
@@ -370,12 +462,21 @@ void sendBrodcast(char* adr, char* cmd, String a, String b, String c)
 
 void buttonsHandle()
 {
+  //Clear states
   for (int i = 0; i < 5; i++)
   {
-    //Clear states
     buttons[i][2] = 0;
     buttons[i][3] = 0;
-    
+  }
+  
+  if(buttonCheckAlarm + BUTTON_CHECK > millis())
+  {
+    return;
+  }
+  buttonCheckAlarm = millis();
+  
+  for (int i = 0; i < 5; i++)
+  {
     if(buttonsHistoryTimestamp[i][0] + BUTTON_SLEEP > millis())
     {
       continue;
@@ -567,12 +668,12 @@ void mqttCallback(char* topic, byte* payload, unsigned int length)
     if (payloadStr == "1")
     {
       c12 = 1;
-      digitalWrite(4, LOW);
+      digitalWrite(SUPPLY_12_PIN, LOW);
     }
     else if (payloadStr == "0")
     {
       c12 = 0;
-      digitalWrite(4, HIGH);
+      digitalWrite(SUPPLY_12_PIN, HIGH);
     }
   }
 //--------------------------------------------------------------------------------
@@ -581,12 +682,12 @@ void mqttCallback(char* topic, byte* payload, unsigned int length)
     if (payloadStr == "1")
     {
       c5 = 1;
-      digitalWrite(15, LOW);
+      digitalWrite(SUPPLY_5_PIN, LOW);
     }
     else if (payloadStr == "0")
     {
       c5 = 0;
-      digitalWrite(15, HIGH);
+      digitalWrite(SUPPLY_5_PIN, HIGH);
     }
   }
 //--------------------------------------------------------------------------------
@@ -597,14 +698,14 @@ void mqttCallback(char* topic, byte* payload, unsigned int length)
       topBar = 1;
       c12 = 1;
       client.publish("c12", "1");
-      digitalWrite(4, LOW);
+      digitalWrite(SUPPLY_12_PIN, LOW);
     }
     else if (payloadStr == "0")
     {
       topBar = 0;
       c12 = 0;
       client.publish("c12", "0");
-      digitalWrite(4, HIGH);
+      digitalWrite(SUPPLY_12_PIN, HIGH);
     }
   }
 //--------------------------------------------------------------------------------
@@ -695,11 +796,11 @@ void udpCallback(String command)
   {
     if(parmB == "on")
     {
-      digitalWrite(15, LOW);
+      digitalWrite(SUPPLY_5_PIN, LOW);
     }
     else if(parmB == "off")
     {
-      digitalWrite(15, HIGH);
+      digitalWrite(SUPPLY_5_PIN, HIGH);
     }
   }
   //-------------------------------------------------------------------------------- 12V power supply
@@ -707,11 +808,11 @@ void udpCallback(String command)
   {
     if(parmB == "on")
     {
-      digitalWrite(4, LOW);
+      digitalWrite(SUPPLY_12_PIN, LOW);
     }
     else if(parmB == "off")
     {
-      digitalWrite(4, HIGH);
+      digitalWrite(SUPPLY_12_PIN, HIGH);
     }
   }
 }
