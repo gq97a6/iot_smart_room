@@ -1,7 +1,8 @@
 //Variables
 #define FRAMES_PER_SECOND 120
-#define BUTTON_SLEEP 100 //Ignore button state after change
-#define BUTTON_CHECK 50 //Check state every
+#define BUTTON_SLEEP 100 //Ignore button after change
+#define BUTTON_CHECK 10 //Check state every
+#define MAX_DCE_TIMERS 20
 
 #define STRIP_LEN_L 78
 #define STRIP_LEN_P 78
@@ -12,6 +13,7 @@
 #define SUPPLY_5_PIN 15
 #define SUPPLY_12_PIN 4
 #define POTEN_PIN 34
+#define BUZZER_PIN 23
 
 //Alarms
 #define UPDATE_FREQ 10000
@@ -26,6 +28,11 @@ const char* MQTT_SERVER = "tailor.cloudmqtt.com";
 const char* ssid = "2.4G-Vectra-WiFi-8F493A";
 const char* password = "brygida71";
 IPAddress ipToPing (8, 8, 8, 8); // The remote ip to ping
+
+//Delayed command execution
+long DCETimers[MAX_DCE_TIMERS][2]; //When, distance
+int DCELoop[MAX_DCE_TIMERS]; //0 == retain, >0 == loop
+String DCECommand[MAX_DCE_TIMERS][6]; //Command OR address, cmd, A, B, C
 
 //EEPROM
 #include <Preferences.h>
@@ -113,9 +120,17 @@ void setup()
   
   pinMode(SUPPLY_5_PIN, OUTPUT); //5VDC supply
   pinMode(SUPPLY_12_PIN, OUTPUT); //12VDC supply
-  
-  digitalWrite(15, HIGH);
-  digitalWrite(4, HIGH);
+
+  //Power supply
+  digitalWrite(SUPPLY_5_PIN, HIGH);
+  digitalWrite(SUPPLY_12_PIN, HIGH);
+
+  //Buzzer
+  pinMode(BUZZER_PIN, OUTPUT);
+  digitalWrite(BUZZER_PIN, HIGH);
+  ledcSetup(0, 5000, 8);
+  ledcAttachPin(BUZZER_PIN, 0);
+  ledcWrite(0, 0);
   
   FastLED.addLeds<WS2812B, STRIP_PIN_L, GRB>(stripL, STRIP_LEN_L).setCorrection(CRGB(255,255,255));
   FastLED.addLeds<WS2812B, STRIP_PIN_P, GRB>(stripP, STRIP_LEN_P).setCorrection(CRGB(255,255,255));
@@ -197,7 +212,9 @@ void setup()
 void loop()
 {
   conErrorHandle(); //OTA and connection maintenance
-
+  buttonsHandle();
+  DCEHandle();
+  
   float temp = bme.readTemperature();
   int humi = bme.readHumidity();
   int pres = bme.readPressure() / 100.0F;
@@ -217,8 +234,6 @@ void loop()
     String(pres).toCharArray(charArray, 8);
     client.publish("pres", charArray);
   }
-
-  buttonsHandle();
   
   //Top bar control
   if(buttons[3][2] && 
@@ -272,19 +287,19 @@ void loop()
     int poten = analogRead(POTEN_PIN);
     if(poten == 0)
     {
-      sendBrodcast("wen", "heat", String("cold"), String(""), String(""));
+      sendBrodcast("loz", "heat", String("cold"), String(""), String(""));
     }
     else if(poten >= 1 && poten <= 160)
     {
-      sendBrodcast("wen", "heat", String("auto"), String(""), String(""));
+      sendBrodcast("loz", "heat", String("auto"), String(""), String(""));
     }
     else if(poten >= 176 && poten <= 335)
     {
-      sendBrodcast("wen", "heat", String("heatup"), String(""), String(""));
+      sendBrodcast("loz", "heat", String("heatup"), String(""), String(""));
     }
     else if(poten >= 351 && poten <= 511)
     {
-      sendBrodcast("wen", "heat", String("heat"), String(""), String(""));
+      sendBrodcast("loz", "heat", String("heat"), String(""), String(""));
     }
   }
 
@@ -444,6 +459,7 @@ void mqttReconnect()
     client.subscribe("cen12;");
     client.subscribe("cencwip;");
     client.subscribe("cenanim;");
+    client.subscribe("cenbotim;");
   }
 }
 
@@ -503,6 +519,105 @@ void buttonsHandle()
   }
 }
 
+void DCEHandle()
+{
+  for(int i=0; i<MAX_DCE_TIMERS; i++)
+  {
+    if(millis() >= DCETimers[i][0] && DCETimers[i][0] > 0)
+    {
+      //Execute command and optional brodcast
+      terminal(DCECommand[i][0]);
+      if(DCECommand[i][1] != "")
+      {
+        char adrArray[10];
+        char cmdArray[10];
+        DCECommand[i][1].toCharArray(adrArray, 10);
+        DCECommand[i][2].toCharArray(cmdArray, 10);
+        
+        sendBrodcast(adrArray, cmdArray, DCECommand[i][3], DCECommand[i][4], DCECommand[i][5]);
+      }
+      
+      if(DCELoop[i] > 1)
+      {
+        //Append timer
+        DCETimers[i][0] += DCETimers[1][1];
+        DCELoop[i] -= 1;
+      }
+      else if(DCELoop[i] == 1)
+      {
+        //Close DCE, its last iteration
+        DCETimers[i][0] = 0;
+      }
+      //Do nothing its infinite
+    }
+  }
+}
+
+void DCEAdd(long timer, String command, int loops, char* adr, char* cmd, char* a, char* b, char* c)
+{
+  for(int i=0; i<MAX_DCE_TIMERS; i++)
+  {
+    if(DCETimers[i][0] == 0) //Look for first empty
+    {
+      //Command
+      DCETimers[i][0] = timer + millis();
+      DCETimers[i][1] = timer;
+      DCECommand[i][0] = command;
+      DCELoop[i] = loops;
+
+      if(adr != "")
+      {
+        //Brodcast
+        DCECommand[i][1] = String(adr);
+        DCECommand[i][2] = String(cmd);
+        DCECommand[i][3] = String(a);
+        DCECommand[i][4] = String(b);
+        DCECommand[i][5] = String(c);
+      }
+
+      return;
+    }
+  }
+}
+
+bool DCEEdit(long timer, String command, int loops, char* adr, char* cmd, char* a, char* b, char* c)
+{
+  bool edited = 0;
+  
+  for(int i=0; i<MAX_DCE_TIMERS; i++)
+  {
+    if(DCECommand[i][0] == command) //Look for desired command and edit
+    {
+      edited = 1;
+      
+      //Command
+      if(timer > 0)
+      {
+        DCETimers[i][0] = timer + millis();
+        DCETimers[i][1] = timer;
+      }
+      else if(timer == 0)
+      {  
+        DCETimers[i][0] = 0;
+      }
+      
+      DCECommand[i][0] = command;
+      DCELoop[i] = loops;
+
+      if(adr != "")
+      {
+        //Brodcast
+        DCECommand[i][1] = String(adr);
+        DCECommand[i][2] = String(cmd);
+        DCECommand[i][3] = String(a);
+        DCECommand[i][4] = String(b);
+        DCECommand[i][5] = String(c);
+      }
+    }
+  }
+
+  return edited;
+}
 //-------------------------------------------------------------------------------- Strip functions
 void colorWipe(uint32_t color, int wait, int first, int last)
 {
@@ -776,5 +891,30 @@ void terminal(String command)
     {
       digitalWrite(SUPPLY_12_PIN, HIGH);
     }
+  }
+  else if(parmA == "bip")
+  {
+    ledcWrite(0, parmB.toInt());
+  }
+  else if(parmA == "botim")
+  {
+    if(parmB.toInt() == 0)
+    {
+      //Turn off
+      DCEEdit(0, "black", 0, "", "", "", "", "");
+    }
+    else
+    {
+      long timer = parmB.toInt() * 60 * 1000; //Minutes to milliseconds
+      DCEAdd(timer, "black", 1, "wen", "fan", "0", "", "");
+      DCEAdd(timer, "black", 1, "loz", "5", "0", "", "");
+      DCEAdd(timer, "black", 1, "loz", "anim", "0", "", "");
+    }
+  }
+  else if(parmA == "black")
+  {
+    terminal("12;0;;;");
+    terminal("5;0;;;");
+    terminal("anim;0;;;");
   }
 }

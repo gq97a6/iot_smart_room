@@ -384,7 +384,7 @@ void setHeatMode(int m)
     break;
 //-------------------------------------------------------------------------------- Heat up
   case 3:
-    heatUpAlarm = millis() + TEMP_RECEIVED_FREQ; //Set alarm to turn off valve
+    heatUpAlarm = millis() + HEATUP_FREQ  ; //Set alarm to turn off valve
     heatMode = 3;
     valve(1);
     break;
