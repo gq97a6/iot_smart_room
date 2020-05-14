@@ -7,13 +7,13 @@
 #define STRIP_LEN_L 78
 #define STRIP_LEN_P 78
 
-#define STRIP_PIN_L 18
-#define STRIP_PIN_P 5
+#define STRIP_PIN_L 5
+#define STRIP_PIN_P 18
+#define STRIP_PIN_I 13
 
 #define SUPPLY_5_PIN 15
 #define SUPPLY_12_PIN 4
 #define POTEN_PIN 34
-#define BUZZER_PIN 23
 
 //Alarms
 #define UPDATE_FREQ 10000
@@ -42,6 +42,7 @@ Preferences preferences;
 #include <FastLED.h>
 CRGB stripL[STRIP_LEN_L];
 CRGB stripP[STRIP_LEN_P];
+CRGB stripI[3];
 
 //BME280 sensor
 #include <Wire.h>
@@ -105,6 +106,7 @@ byte anim;
 bool c5;
 bool c12;
 bool topBar;
+byte potenPos;
 
 void setup()
 {
@@ -116,24 +118,16 @@ void setup()
   }
   
   pinMode(POTEN_PIN, INPUT); //Poten
-  analogReadResolution(9);
-  
   pinMode(SUPPLY_5_PIN, OUTPUT); //5VDC supply
   pinMode(SUPPLY_12_PIN, OUTPUT); //12VDC supply
 
   //Power supply
   digitalWrite(SUPPLY_5_PIN, HIGH);
   digitalWrite(SUPPLY_12_PIN, HIGH);
-
-  //Buzzer
-  pinMode(BUZZER_PIN, OUTPUT);
-  digitalWrite(BUZZER_PIN, HIGH);
-  ledcSetup(0, 5000, 8);
-  ledcAttachPin(BUZZER_PIN, 0);
-  ledcWrite(0, 0);
   
   FastLED.addLeds<WS2812B, STRIP_PIN_L, GRB>(stripL, STRIP_LEN_L).setCorrection(CRGB(255,255,255));
   FastLED.addLeds<WS2812B, STRIP_PIN_P, GRB>(stripP, STRIP_LEN_P).setCorrection(CRGB(255,255,255));
+  FastLED.addLeds<WS2812B, STRIP_PIN_I, GRB>(stripI, 3).setCorrection(CRGB(255,179,166));
   FastLED.setBrightness(255);
 
   //MQTT
@@ -213,6 +207,7 @@ void loop()
 {
   conErrorHandle(); //OTA and connection maintenance
   buttonsHandle();
+  potenHandle();
   DCEHandle();
   
   float temp = bme.readTemperature();
@@ -257,26 +252,28 @@ void loop()
   if(buttons[2][3] && 
   !buttons[0][1] && !buttons[1][1] && !buttons[3][1] && !buttons[4][1])
   {
-    int poten = analogRead(POTEN_PIN);
-    if(poten == 0)
+    delay(500);
+    switch(potenPos)
     {
-      client.publish("wenfan;", "0");
-      sendBrodcast("wen", "fan", String("0"), String(""), String(""));
-    }
-    else if(poten >= 1 && poten <= 160)
-    {
-      client.publish("wenfan;", "1");
-      sendBrodcast("wen", "fan", String("1"), String(""), String(""));
-    }
-    else if(poten >= 176 && poten <= 335)
-    {
-      client.publish("wenfan;", "2");
-      sendBrodcast("wen", "fan", String("2"), String(""), String(""));
-    }
-    else if(poten >= 351 && poten <= 511)
-    {
-      client.publish("wenfan;", "3");
-      sendBrodcast("wen", "fan", String("3"), String(""), String(""));
+      case 0:
+        client.publish("wenfan;", "0");
+        sendBrodcast("wen", "fan", String("0"), String(""), String(""));
+        break;
+        
+      case 1:
+        client.publish("wenfan;", "1");
+        sendBrodcast("wen", "fan", String("1"), String(""), String(""));
+        break;
+        
+      case 2:
+        client.publish("wenfan;", "2");
+        sendBrodcast("wen", "fan", String("2"), String(""), String(""));
+        break;
+        
+      case 3:
+        client.publish("wenfan;", "3");
+        sendBrodcast("wen", "fan", String("3"), String(""), String(""));
+        break;
     }
   }
   
@@ -284,22 +281,53 @@ void loop()
   if(buttons[0][2] && 
   !buttons[1][1] && !buttons[2][1] && !buttons[3][1] && !buttons[4][1])
   {
-    int poten = analogRead(POTEN_PIN);
-    if(poten == 0)
+    delay(500);
+    switch(potenPos)
     {
-      sendBrodcast("loz", "heat", String("cold"), String(""), String(""));
-    }
-    else if(poten >= 1 && poten <= 160)
-    {
-      sendBrodcast("loz", "heat", String("auto"), String(""), String(""));
-    }
-    else if(poten >= 176 && poten <= 335)
-    {
-      sendBrodcast("loz", "heat", String("heatup"), String(""), String(""));
-    }
-    else if(poten >= 351 && poten <= 511)
-    {
-      sendBrodcast("loz", "heat", String("heat"), String(""), String(""));
+      case 0:
+        sendBrodcast("loz", "heat", String("cold"), String(""), String(""));
+        
+        DCEAdd(100, "infd;#0000FF;0;;", 5, "", "", "", "", "");
+        DCEAdd(200, "infd;#000000;0;;", 5, "", "", "", "", "");
+        DCEAdd(100, "infd;#0000FF;1;;", 5, "", "", "", "", "");
+        DCEAdd(200, "infd;#000000;1;;", 5, "", "", "", "", "");
+        DCEAdd(100, "infd;#0000FF;2;;", 5, "", "", "", "", "");
+        DCEAdd(200, "infd;#000000;2;;", 5, "", "", "", "", "");
+        
+        break;
+        
+      case 1:
+        sendBrodcast("loz", "heat", String("auto"), String(""), String(""));
+        DCEAdd(500, "infd;#FF0000;0;;", 3, "", "", "", "", "");
+        DCEAdd(1000, "infd;#000000;0;;", 3, "", "", "", "", "");
+        DCEAdd(1000, "infd;#FF0000;1;;", 3, "", "", "", "", "");
+        DCEAdd(1500, "infd;#000000;1;;", 3, "", "", "", "", "");
+        DCEAdd(500, "infd;#FF0000;2;;", 3, "", "", "", "", "");
+        DCEAdd(1000, "infd;#000000;2;;", 3, "", "", "", "", "");
+        
+        break;
+        
+      case 2:
+        sendBrodcast("loz", "heat", String("heatup"), String(""), String(""));
+        DCEAdd(1000, "infd;#FF0000;0;;", 2, "", "", "", "", "");
+        DCEAdd(1100, "infd;#000000;0;;", 2, "", "", "", "", "");
+        DCEAdd(1000, "infd;#FF0000;1;;", 2, "", "", "", "", "");
+        DCEAdd(1100, "infd;#000000;1;;", 2, "", "", "", "", "");
+        DCEAdd(1000, "infd;#FF0000;2;;", 2, "", "", "", "", "");
+        DCEAdd(1100, "infd;#000000;2;;", 2, "", "", "", "", "");
+        
+        break;
+        
+      case 3:
+        sendBrodcast("loz", "heat", String("heat"), String(""), String(""));
+        DCEAdd(100, "infd;#FF0000;0;;", 5, "", "", "", "", "");
+        DCEAdd(200, "infd;#000000;0;;", 5, "", "", "", "", "");
+        DCEAdd(100, "infd;#FF0000;1;;", 5, "", "", "", "", "");
+        DCEAdd(200, "infd;#000000;1;;", 5, "", "", "", "", "");
+        DCEAdd(100, "infd;#FF0000;2;;", 5, "", "", "", "", "");
+        DCEAdd(200, "infd;#000000;2;;", 5, "", "", "", "", "");
+        
+        break;
     }
   }
 
@@ -326,40 +354,50 @@ void loop()
   {
     FastLED.show();
     sendBrodcast("loz", "shw", String(""), String(""), String(""));
+
+    DCEAdd(500, "infd;#FF0000;0;;", 5, "", "", "", "", "");
+    DCEAdd(1000, "infd;#000000;0;;", 5, "", "", "", "", "");
+
+    DCEAdd(500, "infd;#00FF00;1;;", 5, "", "", "", "", "");
+    DCEAdd(1000, "infd;#000000;1;;", 5, "", "", "", "", "");
+
+    DCEAdd(500, "infd;#0000FF;2;;", 5, "", "", "", "", "");
+    DCEAdd(1000, "infd;#000000;2;;", 5, "", "", "", "", "");
   }
   
   //Power on
   if(abs(millis() - buttonsHistoryTimestamp[4][1] - 750) <= 500 && buttonsHistoryState[4][1] && buttons[4][3] &&
   !buttons[0][1] && !buttons[1][1] && !buttons[2][1] && !buttons[3][1])
   {
-    int poten = analogRead(POTEN_PIN);
-    if(poten == 0) //c5
+    switch(potenPos)
     {
-      c5 = 1;
-      digitalWrite(SUPPLY_5_PIN, LOW);
-    }
-    else if(poten >= 1 && poten <= 160) //b5
-    {
-      client.publish("loz5;", "1");
-      sendBrodcast("loz", "5", String("on"), String(""), String(""));
-    }
-    else if(poten >= 176 && poten <= 335) //c12
-    {
-      topBar = 1;
-      c12 = 1;
-      digitalWrite(SUPPLY_12_PIN, LOW);
-    }
-    else if(poten >= 351 && poten <= 511)
-    {
-      c5 = 1;
-      digitalWrite(SUPPLY_5_PIN, LOW);
-      
-      client.publish("loz5;", "1");
-      sendBrodcast("loz", "5", String("on"), String(""), String(""));
-
-      delay(1000);
-      FastLED.show();
-      sendBrodcast("loz", "shw", String(""), String(""), String(""));
+      case 0:
+        c5 = 1;
+        digitalWrite(SUPPLY_5_PIN, LOW);
+        break;
+        
+      case 1:
+        client.publish("loz5;", "1");
+        sendBrodcast("loz", "5", String("on"), String(""), String(""));
+        break;
+        
+      case 2:
+        topBar = 1;
+        c12 = 1;
+        digitalWrite(SUPPLY_12_PIN, LOW);
+        break;
+        
+      case 3:
+        c5 = 1;
+        digitalWrite(SUPPLY_5_PIN, LOW);
+        
+        client.publish("loz5;", "1");
+        sendBrodcast("loz", "5", String("on"), String(""), String(""));
+  
+        delay(1000);
+        FastLED.show();
+        sendBrodcast("loz", "shw", String(""), String(""), String(""));
+        break;
     }
   }
 
@@ -367,30 +405,43 @@ void loop()
   if(abs(millis() - buttonsHistoryTimestamp[4][1] - 200) <= 200 && buttonsHistoryState[4][1] && buttons[4][3] &&
   !buttons[0][1] && !buttons[1][1] && !buttons[2][1] && !buttons[3][1])
   {
-    int poten = analogRead(POTEN_PIN);
-    if(poten == 0) //c5
+    switch(potenPos)
     {
-      c5 = 0;
-      digitalWrite(SUPPLY_5_PIN, HIGH);
-    }
-    else if(poten >= 1 && poten <= 160) //b5
-    {
-      client.publish("loz5;", "0");
-      sendBrodcast("loz", "5", String("off"), String(""), String(""));
-    }
-    else if(poten >= 176 && poten <= 335) //c12
-    {
-      topBar = 0;
-      c12 = 0;
-      digitalWrite(SUPPLY_12_PIN, HIGH);
-    }
-    else if(poten >= 351 && poten <= 511)
-    {
-      c5 = 0;
-      digitalWrite(SUPPLY_5_PIN, HIGH);
-      
-      client.publish("loz5;", "0");
-      sendBrodcast("loz", "5", String("off"), String(""), String(""));
+      case 0:
+        c5 = 0;
+        digitalWrite(SUPPLY_5_PIN, HIGH);
+        break;
+        
+      case 1:
+        client.publish("loz5;", "0");
+        sendBrodcast("loz", "5", String("off"), String(""), String(""));
+        break;
+        
+      case 2:
+        topBar = 0;
+        c12 = 0;
+        digitalWrite(SUPPLY_12_PIN, HIGH);
+        break;
+        
+      case 3:
+        c5 = 1;
+        digitalWrite(SUPPLY_5_PIN, LOW);
+        
+        client.publish("loz5;", "1");
+        sendBrodcast("loz", "5", String("on"), String(""), String(""));
+  
+        delay(1000);
+        FastLED.show();
+        sendBrodcast("loz", "shw", String(""), String(""), String(""));
+        break;
+        
+      case 4:
+        c5 = 0;
+        digitalWrite(SUPPLY_5_PIN, HIGH);
+        
+        client.publish("loz5;", "0");
+        sendBrodcast("loz", "5", String("off"), String(""), String(""));
+        break;
     }
   }
   
@@ -539,14 +590,15 @@ void DCEHandle()
       
       if(DCELoop[i] > 1)
       {
-        //Append timer
-        DCETimers[i][0] += DCETimers[1][1];
+        //extend timer
+        DCETimers[i][0] = millis() + DCETimers[1][1];
         DCELoop[i] -= 1;
       }
       else if(DCELoop[i] == 1)
       {
         //Close DCE, its last iteration
         DCETimers[i][0] = 0;
+        DCECommand[i][0] = DCECommand[i][1] = DCECommand[i][2] = DCECommand[i][3] = DCECommand[i][4] = DCECommand[i][5] = "";
       }
       //Do nothing its infinite
     }
@@ -618,6 +670,35 @@ bool DCEEdit(long timer, String command, int loops, char* adr, char* cmd, char* 
 
   return edited;
 }
+
+byte potenHandle()
+{
+  int poten = analogRead(POTEN_PIN);
+  byte potenPos = -1;
+    
+  if(poten == 0)
+  {
+    potenPos = 0;
+  }
+  else if(poten <= 930)
+  {
+    potenPos = 1;
+  }
+  else if(poten <= 2350)
+  {
+    potenPos = 2;
+  }
+  else if(poten < 4095)
+  {
+    potenPos = 3;
+  }
+  else if(poten == 4095)
+  {
+    potenPos = 4;
+  }
+  return potenPos;
+}
+
 //-------------------------------------------------------------------------------- Strip functions
 void colorWipe(uint32_t color, int wait, int first, int last)
 {
@@ -835,27 +916,78 @@ void terminal(String command)
   if(parmA == "cwip")
   {
     parmB.toCharArray(charArray, 8);
-    int color = toIntColor(charArray);
+    int colorA = toIntColor(charArray);
+  
+    parmB = parmB.substring(0,3) + decToHex(hexToDec(parmB.substring(3,5)) * 70/100, 2) + decToHex(hexToDec(parmB.substring(5)) * 65/100, 2);
+    parmB.toUpperCase();
+    
+    parmB.toCharArray(charArray, 8);
+    int colorB = toIntColor(charArray);
     
     for (int i = 0; i < STRIP_LEN_L; i++)
     {
-      stripL[i] = color;
+      if(i<2)
+      {
+        stripL[i] = colorA;
+      }
+      else
+      {
+        stripL[i] = colorB;
+      }
     }
 
     for (int i = 0; i < STRIP_LEN_P; i++)
     {
-      stripP[i] = color;
+      if(i<6)
+      {
+        stripP[i] = colorA;
+      }
+      else
+      {
+        stripP[i] = colorB;
+      }
     }
     
+    
+    FastLED.show();
     FastLED.show();
   }
   //-------------------------------------------------------------------------------- Set color of one diode
   else if(parmA == "setd")
   {
     parmB.toCharArray(charArray, 8);
-    stripL[parmC.toInt()] = toIntColor(charArray);
-    stripP[parmC.toInt()] = toIntColor(charArray);
+    int colorA = toIntColor(charArray);
+  
+    parmB = parmB.substring(0,3) + decToHex(hexToDec(parmB.substring(3,5)) * 70/100, 2) + decToHex(hexToDec(parmB.substring(5)) * 65/100, 2);
+    parmB.toUpperCase();
     
+    parmB.toCharArray(charArray, 8);
+    int colorB = toIntColor(charArray);
+
+    if(parmC.toInt()<2)
+    {
+      stripL[parmC.toInt()] = colorA;
+      stripP[parmC.toInt()] = colorA;
+    }
+    else if(parmC.toInt()<6)
+    {
+      stripL[parmC.toInt()] = colorA;
+      stripP[parmC.toInt()] = colorB;
+    }
+    else
+    {
+      stripL[parmC.toInt()] = colorB;
+      stripP[parmC.toInt()] = colorB;
+    }
+    
+    FastLED.show();
+  }
+  else if(parmA == "infd")
+  {
+    parmB.toCharArray(charArray, 8);
+    int color = toIntColor(charArray);
+    stripI[parmC.toInt()] = color;
+
     FastLED.show();
   }
   //--------------------------------------------------------------------------------
@@ -917,4 +1049,32 @@ void terminal(String command)
     terminal("5;0;;;");
     terminal("anim;0;;;");
   }
+}
+
+unsigned int hexToDec(String hexString)
+{
+  
+  unsigned int decValue = 0;
+  int nextInt;
+  
+  for (int i = 0; i < hexString.length(); i++) {
+    
+    nextInt = int(hexString.charAt(i));
+    if (nextInt >= 48 && nextInt <= 57) nextInt = map(nextInt, 48, 57, 0, 9);
+    if (nextInt >= 65 && nextInt <= 70) nextInt = map(nextInt, 65, 70, 10, 15);
+    if (nextInt >= 97 && nextInt <= 102) nextInt = map(nextInt, 97, 102, 10, 15);
+    nextInt = constrain(nextInt, 0, 15);
+    
+    decValue = (decValue * 16) + nextInt;
+  }
+  
+  return decValue;
+}
+
+String decToHex(byte decValue, byte desiredStringLength) {
+  
+  String hexString = String(decValue, HEX);
+  while (hexString.length() < desiredStringLength) hexString = "0" + hexString;
+  
+  return hexString;
 }

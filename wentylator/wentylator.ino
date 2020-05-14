@@ -1,3 +1,7 @@
+#define FIRST_PIN 19
+#define SECOND_PIN 18
+#define THIRD_PIN 21
+
 #define WIFI_RECON_FREQ 30000
 #define MQTT_RECON_FREQ 30000
 
@@ -36,9 +40,9 @@ long mqttReconAlarm;
 
 void setup()
 {
-  pinMode(5, OUTPUT);
-  pinMode(15, OUTPUT);
-  pinMode(18, OUTPUT);
+  pinMode(FIRST_PIN, OUTPUT);
+  pinMode(SECOND_PIN, OUTPUT);
+  pinMode(THIRD_PIN, OUTPUT);
 
   setGear(0);
   
@@ -118,6 +122,7 @@ void setup()
 void loop()
 {
   conErrorHandle();
+  delay(10);
 }
 
 void conErrorHandle()
@@ -170,24 +175,24 @@ void setGear(int t)
   switch(t)
   {
     case 0:
-      digitalWrite(5, LOW);
-      digitalWrite(15, HIGH);
-      digitalWrite(18, HIGH);
+      digitalWrite(FIRST_PIN, HIGH);
+      digitalWrite(SECOND_PIN, HIGH);
+      digitalWrite(THIRD_PIN, HIGH);
       break;
       
     case 1:
       setGear(0);
-      digitalWrite(5, HIGH);
+      digitalWrite(FIRST_PIN, LOW);
       break;
       
     case 2:
       setGear(0);
-      digitalWrite(15, LOW);
+      digitalWrite(SECOND_PIN, LOW);
       break;
       
     case 3:
       setGear(0);
-      digitalWrite(18, LOW);
+      digitalWrite(THIRD_PIN, LOW);
       break;
   }
 }
