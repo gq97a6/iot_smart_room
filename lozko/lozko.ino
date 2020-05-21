@@ -398,12 +398,14 @@ void valve(bool pos)
     valveS = pos;
     digitalWrite(VALVE_PIN , LOW);
     client.publish("valve", "1");
+    sendBrodcast("glb", "vlv", String("1"), String(""), String(""));
   }
   else if (!pos && valveS)
   {
     valveS = pos;
     digitalWrite(VALVE_PIN , HIGH);
     client.publish("valve", "0");
+    sendBrodcast("glb", "vlv", String("0"), String(""), String(""));
   }
 }
 
@@ -448,6 +450,13 @@ void mqttCallback(char* topic, byte* payload, unsigned int length)
   cmd += ";;;";
   
   terminal(cmd);
+}
+
+void sendBrodcast(char* adr, char* cmd, String a, String b, String c)
+{
+  char toSend[40];
+  snprintf(toSend, 40, "%s%s;%s;%s;%s;", adr, cmd, a, b, c);
+  udp.broadcastTo(toSend, 54091);
 }
 
 void terminal(String command)

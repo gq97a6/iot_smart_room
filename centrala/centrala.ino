@@ -107,6 +107,7 @@ bool c5;
 bool c12;
 bool topBar;
 byte potenPos;
+bool valve;
 
 void setup()
 {
@@ -328,6 +329,25 @@ void loop()
         DCEAdd(200, "infd;#000000;2;;", 5, "", "", "", "", "");
         
         break;
+
+      case 4:
+        if(valve)
+        {
+          terminal("infd;#FF0000;0;;");
+          terminal("infd;#FF0000;1;;");
+          terminal("infd;#FF0000;2;;");
+        }
+        else
+        {
+          terminal("infd;#0000FF;0;;");
+          terminal("infd;#0000FF;1;;");
+          terminal("infd;#0000FF;2;;");
+        }
+        DCEAdd(1000, "infd;#000000;0;;", 1, "", "", "", "", "");
+        DCEAdd(1000, "infd;#000000;1;;", 1, "", "", "", "", "");
+        DCEAdd(1000, "infd;#000000;2;;", 1, "", "", "", "", "");
+        
+        break;
     }
   }
 
@@ -511,6 +531,7 @@ void mqttReconnect()
     client.subscribe("cencwip;");
     client.subscribe("cenanim;");
     client.subscribe("cenbotim;");
+    client.subscribe("valve");
   }
 }
 
@@ -674,7 +695,7 @@ bool DCEEdit(long timer, String command, int loops, char* adr, char* cmd, char* 
 byte potenHandle()
 {
   int poten = analogRead(POTEN_PIN);
-  byte potenPos = -1;
+  potenPos = -1;
     
   if(poten == 0)
   {
@@ -840,6 +861,34 @@ int toIntColor(char hexColor[])
 
   return color;
 }
+
+unsigned int hexToDec(String hexString)
+{ 
+  unsigned int decValue = 0;
+  int nextInt;
+  
+  for (int i = 0; i < hexString.length(); i++) {
+    
+    nextInt = int(hexString.charAt(i));
+    if (nextInt >= 48 && nextInt <= 57) nextInt = map(nextInt, 48, 57, 0, 9);
+    if (nextInt >= 65 && nextInt <= 70) nextInt = map(nextInt, 65, 70, 10, 15);
+    if (nextInt >= 97 && nextInt <= 102) nextInt = map(nextInt, 97, 102, 10, 15);
+    nextInt = constrain(nextInt, 0, 15);
+    
+    decValue = (decValue * 16) + nextInt;
+  }
+  
+  return decValue;
+}
+
+String decToHex(byte decValue, byte desiredStringLength) {
+  
+  String hexString = String(decValue, HEX);
+  while (hexString.length() < desiredStringLength) hexString = "0" + hexString;
+  
+  return hexString;
+}
+
 //-------------------------------------------------------------------------------- Callbacks
 
 void mqttCallback(char* topic, byte* payload, unsigned int length)
@@ -1049,32 +1098,8 @@ void terminal(String command)
     terminal("5;0;;;");
     terminal("anim;0;;;");
   }
-}
-
-unsigned int hexToDec(String hexString)
-{
-  
-  unsigned int decValue = 0;
-  int nextInt;
-  
-  for (int i = 0; i < hexString.length(); i++) {
-    
-    nextInt = int(hexString.charAt(i));
-    if (nextInt >= 48 && nextInt <= 57) nextInt = map(nextInt, 48, 57, 0, 9);
-    if (nextInt >= 65 && nextInt <= 70) nextInt = map(nextInt, 65, 70, 10, 15);
-    if (nextInt >= 97 && nextInt <= 102) nextInt = map(nextInt, 97, 102, 10, 15);
-    nextInt = constrain(nextInt, 0, 15);
-    
-    decValue = (decValue * 16) + nextInt;
+  else if(parmA == "vlv")
+  {
+    valve = parmB.toInt();
   }
-  
-  return decValue;
-}
-
-String decToHex(byte decValue, byte desiredStringLength) {
-  
-  String hexString = String(decValue, HEX);
-  while (hexString.length() < desiredStringLength) hexString = "0" + hexString;
-  
-  return hexString;
 }
