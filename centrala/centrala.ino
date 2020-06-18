@@ -250,7 +250,7 @@ void loop()
   }
 
   //Fan control //0(gear 0) 1-160(gear 1) 161-175(X) 176-335(gear 2) 336-350(X) 351-511(gear 3)
-  if(buttons[2][3] && 
+  if(buttons[2][2] && 
   !buttons[0][1] && !buttons[1][1] && !buttons[3][1] && !buttons[4][1])
   {
     delay(500);
@@ -352,7 +352,7 @@ void loop()
   }
 
   //Blackout
-  if(millis() - buttonsHistoryTimestamp[4][0] > 3000 && buttonsHistoryState[4][0] && 
+  if(millis() - buttonsHistoryTimestamp[4][0] > 1000 && buttonsHistoryState[4][0] && 
   !buttons[0][1] && !buttons[1][1] && !buttons[2][1] && !buttons[3][1])
   {
     client.publish("loz5;", "0");
