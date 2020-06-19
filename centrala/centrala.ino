@@ -964,12 +964,12 @@ void terminal(String command)
   //-------------------------------------------------------------------------------- Set one color for whole strip
   if(parmA == "cwip")
   {
+    parmB.toUpperCase();
     parmB.toCharArray(charArray, 8);
     int colorA = toIntColor(charArray);
-  
+
     parmB = parmB.substring(0,3) + decToHex(hexToDec(parmB.substring(3,5)) * 70/100, 2) + decToHex(hexToDec(parmB.substring(5)) * 65/100, 2);
     parmB.toUpperCase();
-    
     parmB.toCharArray(charArray, 8);
     int colorB = toIntColor(charArray);
     
@@ -1004,12 +1004,12 @@ void terminal(String command)
   //-------------------------------------------------------------------------------- Set color of one diode
   else if(parmA == "setd")
   {
+    parmB.toUpperCase();
     parmB.toCharArray(charArray, 8);
     int colorA = toIntColor(charArray);
-  
+
     parmB = parmB.substring(0,3) + decToHex(hexToDec(parmB.substring(3,5)) * 70/100, 2) + decToHex(hexToDec(parmB.substring(5)) * 65/100, 2);
     parmB.toUpperCase();
-    
     parmB.toCharArray(charArray, 8);
     int colorB = toIntColor(charArray);
 
