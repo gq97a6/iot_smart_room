@@ -21,8 +21,8 @@
 #define MQTT_PASSWORD "IItmHbbnu9mD"
 const char* MQTT_SERVER = "tailor.cloudmqtt.com";
 
-const char* ssid = "2.4G-Vectra-WiFi-8F493A";
-const char* password = "brygida71";
+const char* ssid = "Wi-Fi 2.4GHz";
+const char* password = "ceF78*Tay90!hiQ13@";
 IPAddress ipToPing (8, 8, 8, 8); // The remote ip to ping
 
 //EEPROM
