@@ -20,11 +20,13 @@
 #define WIFI_RECON_FREQ 30000
 #define MQTT_RECON_FREQ 30000
 
-#define MQTT_PORT 11045
-#define MQTT_USER "derwsywl"
-#define MQTT_PASSWORD "IItmHbbnu9mD"
-const char* MQTT_SERVER = "tailor.cloudmqtt.com";
+//MQTT
+#define MQTT_PORT 54090
+#define MQTT_USER "mqtt"
+#define MQTT_PASSWORD "r5Vk!@z&uZBY&W%h"
+const char* MQTT_SERVER = "192.168.0.125";
 
+//Wifi
 const char* ssid = "Wi-Fi 2.4GHz";
 const char* password = "ceF78*Tay90!hiQ13@";
 IPAddress ipToPing (8, 8, 8, 8); // The remote ip to ping
@@ -487,7 +489,7 @@ void loop()
 
 void conErrorHandle()
 {
-  if(WiFi.status() == WL_CONNECTED) //No connection with wifi router
+  if(WiFi.status() == WL_CONNECTED)
   {
     ArduinoOTA.handle();
     
@@ -504,7 +506,7 @@ void conErrorHandle()
       }
     }
   }
-  else
+  else //No connection with wifi router
   {
     if (millis() >= wifiReconAlarm)
     {
