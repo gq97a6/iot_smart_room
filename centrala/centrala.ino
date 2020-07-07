@@ -33,7 +33,7 @@ IPAddress ipToPing (8, 8, 8, 8); // The remote ip to ping
 
 //Delayed command execution
 long DCETimers[MAX_DCE_TIMERS][2]; //When, distance
-int DCELoop[MAX_DCE_TIMERS]; //0 == retain, >0 == loop
+int DCELoop[MAX_DCE_TIMERS]; //-1 == retain, >0 == loop
 String DCECommand[MAX_DCE_TIMERS][6]; //Command OR address, cmd, A, B, C
 
 //EEPROM
@@ -100,7 +100,6 @@ int buttons[5][4] =
   
 char charArray[8];
 uint8_t gHue;
-long updateAlarm;
 long wifiReconAlarm;
 long mqttReconAlarm;
 long buttonCheckAlarm;
@@ -204,6 +203,8 @@ void setup()
   
   ArduinoOTA.begin();
   bme.begin();
+
+  DCEAdd(1500, "upair;;;;", -1, "", "", "", "", "");
 }
 
 void loop()
@@ -212,26 +213,6 @@ void loop()
   buttonsHandle();
   potenHandle();
   DCEHandle();
-  
-  float temp = bme.readTemperature();
-  int humi = bme.readHumidity();
-  int pres = bme.readPressure() / 100.0F;
-
-  if(updateAlarm + UPDATE_FREQ < millis())
-  {
-    updateAlarm = millis();
-
-    sendBrodcast("glb", "air", String(temp), String(humi), String(pres));
-    
-    String(temp).toCharArray(charArray, 8);
-    client.publish("temp", charArray);
-    
-    String(humi).toCharArray(charArray, 8);
-    client.publish("humi", charArray);
-    
-    String(pres).toCharArray(charArray, 8);
-    client.publish("pres", charArray);
-  }
   
   //Top bar control
   if(buttons[3][2] && 
@@ -610,20 +591,21 @@ void DCEHandle()
         
         sendBrodcast(adrArray, cmdArray, DCECommand[i][3], DCECommand[i][4], DCECommand[i][5]);
       }
-      
-      if(DCELoop[i] > 1)
+
+      if(DCELoop[i] == -1) // Infinite, extend
       {
-        //extend timer
-        DCETimers[i][0] = millis() + DCETimers[1][1];
+        DCETimers[i][0] = millis() + DCETimers[i][1];
+      }
+      else if(DCELoop[i] > 1) //X times, extend, decrease
+      {
+        DCETimers[i][0] = millis() + DCETimers[i][1];
         DCELoop[i] -= 1;
       }
-      else if(DCELoop[i] == 1)
+      else if(DCELoop[i] == 1) //Close DCE, its last iteration
       {
-        //Close DCE, its last iteration
         DCETimers[i][0] = 0;
         DCECommand[i][0] = DCECommand[i][1] = DCECommand[i][2] = DCECommand[i][3] = DCECommand[i][4] = DCECommand[i][5] = "";
       }
-      //Do nothing its infinite
     }
   }
 }
@@ -1103,5 +1085,22 @@ void terminal(String command)
   else if(parmA == "vlv")
   {
     valve = parmB.toInt();
+  }
+  else if(parmA == "upair")
+  {
+    float temp = bme.readTemperature();
+    int humi = bme.readHumidity();
+    int pres = bme.readPressure() / 100.0F;
+  
+    sendBrodcast("glb", "air", String(temp), String(humi), String(pres));
+    
+    String(temp).toCharArray(charArray, 8);
+    client.publish("temp", charArray);
+    
+    String(humi).toCharArray(charArray, 8);
+    client.publish("humi", charArray);
+    
+    String(pres).toCharArray(charArray, 8);
+    client.publish("pres", charArray);
   }
 }
