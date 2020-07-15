@@ -25,7 +25,6 @@
 #define MQTT_USER "mqtt"
 #define MQTT_PASSWORD "r5Vk!@z&uZBY&W%h"
 const char* MQTT_SERVER = "192.168.0.125";
-#define IS_LOCAL true
 
 //Wifi
 const char* ssid = "Wi-Fi 2.4GHz";
@@ -500,7 +499,7 @@ void conErrorHandle()
       {
         mqttReconAlarm = millis() + MQTT_RECON_FREQ;
         
-        if(Ping.ping(ipToPing, 1) || IS_LOCAL) //There is internet connection or server is localy hosted
+        if(Ping.ping(ipToPing, 1)) //There is internet connection
         {
           mqttReconnect();
         }
