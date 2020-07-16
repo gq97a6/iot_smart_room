@@ -16,7 +16,7 @@
 #define POTEN_PIN 34
 
 //Alarms
-#define UPDATE_FREQ 10000
+#define UPDATE_FREQ 1500
 #define WIFI_RECON_FREQ 30000
 #define MQTT_RECON_FREQ 30000
 #define MYSQL_RECON_FREQ 30000
@@ -27,16 +27,9 @@
 #define MQTT_PASSWORD "r5Vk!@z&uZBY&W%h"
 const char* MQTT_SERVER = "192.168.0.125";
 
-//MySQL
-#define SQL_PORT 3306
-char userSQL[] = "esp";
-char passwordSQL[] = "2Gp&an/f`Q+,rv.<";
-IPAddress addressSQL (192, 168, 0, 125);
-
 //Wifi
 const char* ssid = "Wi-Fi 2.4GHz";
 const char* password = "ceF78*Tay90!hiQ13@";
-IPAddress ipToPing (8, 8, 8, 8); // The remote ip to ping
 
 //UDP
 #define UDP_PORT 54091
@@ -47,12 +40,6 @@ int DCELoop[MAX_DCE_TIMERS]; //-1 == retain, >0 == loop
 String DCECommand[MAX_DCE_TIMERS][6]; //Command OR address, cmd, A, B, C
 
 //-------------------------------------------------------------------------------- Libraries
-
-//MySQL
-#include <Ethernet.h>
-#include <MySQL_Connection.h>
-#include <MySQL_Cursor.h>
-
 //EEPROM
 #include <Preferences.h>
 Preferences preferences;
@@ -85,12 +72,10 @@ AsyncUDP udp;
 #include <SPI.h>
 #include <WiFi.h>
 #include <PubSubClient.h>
-#include <ESP32Ping.h>
 
 //-------------------------------------------------------------------------------- Clients
 WiFiClient wifiClient;
 PubSubClient client(wifiClient);
-MySQL_Connection mysqlClient((Client *)&wifiClient);
 
 //-------------------------------------------------------------------------------- Status
 
@@ -122,7 +107,6 @@ uint8_t gHue;
 long wifiReconAlarm;
 long mqttReconAlarm;
 long buttonCheckAlarm;
-long mysqlReconAlarm;
 byte anim;
 bool c5;
 bool c12;
@@ -163,10 +147,6 @@ void setup()
   WiFi.begin(ssid, password);
 
   delay(1000);
-  if(WiFi.status() != WL_CONNECTED)
-  {
-    Serial.println("notConnected!");
-  }
 
   ArduinoOTA
   .onStart([]()
@@ -222,9 +202,6 @@ void setup()
       }
     });
   }
-
-  //Connect to MySQL server
-  //mysqlClient.connect(addressSQL, SQL_PORT, userSQL, passwordSQL);
 
   ArduinoOTA.begin();
   bme.begin();
@@ -509,18 +486,6 @@ void conErrorHandle()
         mqttReconnect();
       }
     }
-
-//    if(!mysqlClient.connected()) //No connection with mySQL server
-//    {
-//      Serial.println("Disconnected from mySQL server!");
-//      if (millis() >= mysqlReconAlarm)
-//      {
-//        mysqlReconAlarm = millis() + MYSQL_RECON_FREQ;
-//        
-//        Serial.println("Reconnecting to mySQL server.");
-//        mysqlClient.connect(addressSQL, SQL_PORT, userSQL, passwordSQL);
-//      }
-//    }
   }
   else //No connection with wifi router
   {
@@ -560,16 +525,6 @@ void sendBrodcast(char* adr, char* cmd, String a, String b, String c)
   char toSend[40];
   snprintf(toSend, 40, "%s%s;%s;%s;%s;", adr, cmd, a, b, c);
   udp.broadcastTo(toSend, 54091);
-}
-
-void mysqlQuery(char* query)
-{  
-  if(mysqlClient.connected())
-  {
-    MySQL_Cursor *cur_mem = new MySQL_Cursor(&mysqlClient);
-    cur_mem->execute(query);
-    delete cur_mem;
-  }
 }
 
 void buttonsHandle()
@@ -1152,9 +1107,5 @@ void terminal(String command)
     
     String(pres).toCharArray(charArray, 8);
     client.publish("pres", charArray);
-
-    //queryS = "INSERT INTO dane.air (temp, humi, prea) VALUES (" + String(temp) + ", " + String(humi) + ", " + String(pres) + ")";
-    //queryS.toCharArray(sqlArray, 200);
-    //mysqlQuery(sqlArray);
   }
 }
