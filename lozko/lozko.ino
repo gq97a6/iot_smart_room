@@ -24,7 +24,6 @@ const char* MQTT_SERVER = "192.168.0.125";
 
 const char* ssid = "Wi-Fi 2.4GHz";
 const char* password = "ceF78*Tay90!hiQ13@";
-IPAddress ipToPing (8, 8, 8, 8); // The remote ip to ping
 
 //EEPROM
 #include <Preferences.h>
@@ -198,11 +197,7 @@ void conErrorHandle()
       if (millis() >= mqttReconAlarm)
       {
         mqttReconAlarm = millis() + MQTT_RECON_FREQ;
-        
-        if(Ping.ping(ipToPing, 1)) //There is internet connection
-        {
-          mqttReconnect();
-        }
+        mqttReconnect();
       }
     }
   }

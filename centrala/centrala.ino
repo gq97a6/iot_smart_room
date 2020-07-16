@@ -1,4 +1,4 @@
-//Variables
+//-------------------------------------------------------------------------------- Variables
 #define FRAMES_PER_SECOND 120
 #define BUTTON_SLEEP 100 //Ignore button after change
 #define BUTTON_CHECK 10 //Check state every
@@ -19,6 +19,7 @@
 #define UPDATE_FREQ 10000
 #define WIFI_RECON_FREQ 30000
 #define MQTT_RECON_FREQ 30000
+#define MYSQL_RECON_FREQ 30000
 
 //MQTT
 #define MQTT_PORT 54090
@@ -26,15 +27,31 @@
 #define MQTT_PASSWORD "r5Vk!@z&uZBY&W%h"
 const char* MQTT_SERVER = "192.168.0.125";
 
+//MySQL
+#define SQL_PORT 3306
+char userSQL[] = "esp";
+char passwordSQL[] = "2Gp&an/f`Q+,rv.<";
+IPAddress addressSQL (192, 168, 0, 125);
+
 //Wifi
 const char* ssid = "Wi-Fi 2.4GHz";
 const char* password = "ceF78*Tay90!hiQ13@";
 IPAddress ipToPing (8, 8, 8, 8); // The remote ip to ping
 
+//UDP
+#define UDP_PORT 54091
+
 //Delayed command execution
 long DCETimers[MAX_DCE_TIMERS][2]; //When, distance
-int DCELoop[MAX_DCE_TIMERS]; //0 == retain, >0 == loop
+int DCELoop[MAX_DCE_TIMERS]; //-1 == retain, >0 == loop
 String DCECommand[MAX_DCE_TIMERS][6]; //Command OR address, cmd, A, B, C
+
+//-------------------------------------------------------------------------------- Libraries
+
+//MySQL
+#include <Ethernet.h>
+#include <MySQL_Connection.h>
+#include <MySQL_Cursor.h>
 
 //EEPROM
 #include <Preferences.h>
@@ -70,8 +87,10 @@ AsyncUDP udp;
 #include <PubSubClient.h>
 #include <ESP32Ping.h>
 
+//-------------------------------------------------------------------------------- Clients
 WiFiClient wifiClient;
 PubSubClient client(wifiClient);
+MySQL_Connection mysqlClient((Client *)&wifiClient);
 
 //-------------------------------------------------------------------------------- Status
 
@@ -100,17 +119,19 @@ int buttons[5][4] =
   
 char charArray[8];
 uint8_t gHue;
-long updateAlarm;
 long wifiReconAlarm;
 long mqttReconAlarm;
 long buttonCheckAlarm;
+long mysqlReconAlarm;
 byte anim;
 bool c5;
 bool c12;
 bool topBar;
 byte potenPos;
 bool valve;
-
+char sqlArray[200];
+String queryS;
+    
 void setup()
 {
   Serial.begin(115200);
@@ -140,7 +161,12 @@ void setup()
   //Wifi and OTA update
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
+
   delay(1000);
+  if(WiFi.status() != WL_CONNECTED)
+  {
+    Serial.println("notConnected!");
+  }
 
   ArduinoOTA
   .onStart([]()
@@ -175,7 +201,7 @@ void setup()
     ESP.restart();
   });
 
-  if(udp.listen(54091))
+  if(udp.listen(UDP_PORT))
   {
     udp.onPacket([](AsyncUDPPacket packet)
     {
@@ -196,9 +222,14 @@ void setup()
       }
     });
   }
-  
+
+  //Connect to MySQL server
+  //mysqlClient.connect(addressSQL, SQL_PORT, userSQL, passwordSQL);
+
   ArduinoOTA.begin();
   bme.begin();
+
+  DCEAdd(UPDATE_FREQ, "upair;;;;", -1, "", "", "", "", "");
 }
 
 void loop()
@@ -207,26 +238,6 @@ void loop()
   buttonsHandle();
   potenHandle();
   DCEHandle();
-  
-  float temp = bme.readTemperature();
-  int humi = bme.readHumidity();
-  int pres = bme.readPressure() / 100.0F;
-
-  if(updateAlarm + UPDATE_FREQ < millis())
-  {
-    updateAlarm = millis();
-
-    sendBrodcast("glb", "air", String(temp), String(humi), String(pres));
-    
-    String(temp).toCharArray(charArray, 8);
-    client.publish("temp", charArray);
-    
-    String(humi).toCharArray(charArray, 8);
-    client.publish("humi", charArray);
-    
-    String(pres).toCharArray(charArray, 8);
-    client.publish("pres", charArray);
-  }
   
   //Top bar control
   if(buttons[3][2] && 
@@ -488,24 +499,35 @@ void conErrorHandle()
   {
     ArduinoOTA.handle();
     
-    if(!client.loop()) //No connection with mqtt server
+    if(!client.loop()) //No connection with MQTT server
     {
       Serial.println("Disconnected from MQTT server!");
       if (millis() >= mqttReconAlarm)
       {
+        Serial.println("Reconnecting to MQTT server.");
         mqttReconAlarm = millis() + MQTT_RECON_FREQ;
-        
-        if(Ping.ping(ipToPing, 1)) //There is internet connection
-        {
-          mqttReconnect();
-        }
+        mqttReconnect();
       }
     }
+
+//    if(!mysqlClient.connected()) //No connection with mySQL server
+//    {
+//      Serial.println("Disconnected from mySQL server!");
+//      if (millis() >= mysqlReconAlarm)
+//      {
+//        mysqlReconAlarm = millis() + MYSQL_RECON_FREQ;
+//        
+//        Serial.println("Reconnecting to mySQL server.");
+//        mysqlClient.connect(addressSQL, SQL_PORT, userSQL, passwordSQL);
+//      }
+//    }
   }
   else //No connection with wifi router
   {
+    Serial.println("Disconnected from wifi router!");
     if (millis() >= wifiReconAlarm)
     {
+      Serial.println("Reconnecting to wifi router.");
       wifiReconAlarm = millis() + WIFI_RECON_FREQ;
 
       WiFi.disconnect();
@@ -538,6 +560,16 @@ void sendBrodcast(char* adr, char* cmd, String a, String b, String c)
   char toSend[40];
   snprintf(toSend, 40, "%s%s;%s;%s;%s;", adr, cmd, a, b, c);
   udp.broadcastTo(toSend, 54091);
+}
+
+void mysqlQuery(char* query)
+{  
+  if(mysqlClient.connected())
+  {
+    MySQL_Cursor *cur_mem = new MySQL_Cursor(&mysqlClient);
+    cur_mem->execute(query);
+    delete cur_mem;
+  }
 }
 
 void buttonsHandle()
@@ -593,7 +625,7 @@ void DCEHandle()
 {
   for(int i=0; i<MAX_DCE_TIMERS; i++)
   {
-    if(millis() >= DCETimers[i][0] && DCETimers[i][0] > 0)
+    if(millis() >= DCETimers[i][0] && DCELoop[i] != 0)
     {
       //Execute command and optional brodcast
       terminal(DCECommand[i][0]);
@@ -607,19 +639,19 @@ void DCEHandle()
         sendBrodcast(adrArray, cmdArray, DCECommand[i][3], DCECommand[i][4], DCECommand[i][5]);
       }
       
-      if(DCELoop[i] > 1)
+      if(DCELoop[i] == -1) // Infinite, extend
       {
-        //extend timer
-        DCETimers[i][0] = millis() + DCETimers[1][1];
+        DCETimers[i][0] = millis() + DCETimers[i][1];
+      }
+      else if(DCELoop[i] > 1) //X times, extend, decrease
+      {
+        DCETimers[i][0] = millis() + DCETimers[i][1];
         DCELoop[i] -= 1;
       }
-      else if(DCELoop[i] == 1)
+      else if(DCELoop[i] == 1) //Close DCE, its last iteration
       {
-        //Close DCE, its last iteration
-        DCETimers[i][0] = 0;
-        DCECommand[i][0] = DCECommand[i][1] = DCECommand[i][2] = DCECommand[i][3] = DCECommand[i][4] = DCECommand[i][5] = "";
+        DCELoop[i] = 0;
       }
-      //Do nothing its infinite
     }
   }
 }
@@ -628,13 +660,13 @@ void DCEAdd(long timer, String command, int loops, char* adr, char* cmd, char* a
 {
   for(int i=0; i<MAX_DCE_TIMERS; i++)
   {
-    if(DCETimers[i][0] == 0) //Look for first empty
+    if(DCELoop[i] == 0) //Look for first empty
     {
       //Command
       DCETimers[i][0] = timer + millis();
       DCETimers[i][1] = timer;
-      DCECommand[i][0] = command;
       DCELoop[i] = loops;
+      DCECommand[i][0] = command;
 
       if(adr != "")
       {
@@ -644,6 +676,10 @@ void DCEAdd(long timer, String command, int loops, char* adr, char* cmd, char* a
         DCECommand[i][3] = String(a);
         DCECommand[i][4] = String(b);
         DCECommand[i][5] = String(c);
+      }
+      else
+      {
+        DCECommand[i][1] = DCECommand[i][2] = DCECommand[i][3] = DCECommand[i][4] = DCECommand[i][5] = "";
       }
 
       return;
@@ -657,7 +693,7 @@ bool DCEEdit(long timer, String command, int loops, char* adr, char* cmd, char* 
   
   for(int i=0; i<MAX_DCE_TIMERS; i++)
   {
-    if(DCECommand[i][0] == command) //Look for desired command and edit
+    if(DCECommand[i][0] == command || DCELoop[i] != 0) //Look for desired command and edit
     {
       edited = 1;
       
@@ -1099,5 +1135,26 @@ void terminal(String command)
   else if(parmA == "vlv")
   {
     valve = parmB.toInt();
+  }
+  else if(parmA == "upair")
+  {
+    float temp = bme.readTemperature();
+    int humi = bme.readHumidity();
+    int pres = bme.readPressure() / 100.0F;
+  
+    sendBrodcast("glb", "air", String(temp), String(humi), String(pres));
+    
+    String(temp).toCharArray(charArray, 8);
+    client.publish("temp", charArray);
+    
+    String(humi).toCharArray(charArray, 8);
+    client.publish("humi", charArray);
+    
+    String(pres).toCharArray(charArray, 8);
+    client.publish("pres", charArray);
+
+    //queryS = "INSERT INTO dane.air (temp, humi, prea) VALUES (" + String(temp) + ", " + String(humi) + ", " + String(pres) + ")";
+    //queryS.toCharArray(sqlArray, 200);
+    //mysqlQuery(sqlArray);
   }
 }
