@@ -1,4 +1,4 @@
-#define FIRST_PIN 19
+#define FIRST_PIN 18 //19
 #define SECOND_PIN 18
 #define THIRD_PIN 21
 
@@ -39,11 +39,12 @@ PubSubClient client(wifiClient);
 long wifiReconAlarm;
 long mqttReconAlarm;
 
+byte gear;
 void setup()
 {
   pinMode(FIRST_PIN, OUTPUT);
-  pinMode(SECOND_PIN, OUTPUT);
-  pinMode(THIRD_PIN, OUTPUT);
+  //pinMode(SECOND_PIN, OUTPUT);
+  //pinMode(THIRD_PIN, OUTPUT);
 
   setGear(0);
   
@@ -173,23 +174,24 @@ void setGear(int t)
   {
     case 0:
       digitalWrite(FIRST_PIN, HIGH);
-      digitalWrite(SECOND_PIN, HIGH);
-      digitalWrite(THIRD_PIN, HIGH);
+      gear = 0;
       break;
       
     case 1:
       setGear(0);
       digitalWrite(FIRST_PIN, LOW);
+      gear = 1;
       break;
-      
-    case 2:
-      setGear(0);
-      digitalWrite(SECOND_PIN, LOW);
-      break;
-      
-    case 3:
-      setGear(0);
-      digitalWrite(THIRD_PIN, LOW);
+
+    case -1:
+      if(gear)
+      {
+        setGear(0);
+      }
+      else
+      {
+        setGear(1);
+      }
       break;
   }
 }

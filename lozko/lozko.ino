@@ -146,31 +146,25 @@ void setup()
 void loop()
 {
   conErrorHandle();
-  
-  if (WiFi.status() == WL_CONNECTED)
-  {
-    ArduinoOTA.handle();
-  }
 
-  //!!!
-  if (heatMode == 2) //Auto
-  {
-    if (millis() >= tempReceivedAlarm || temperature > termostat - 0.3)
-    {
-      valve(0);
-    }
-    else if (temperature < termostat + 0.1)
-    {
-      valve(1);
-    }
-  }
-  else if (heatMode == 3) //Heat up
-  {
-    if (millis() >= heatUpAlarm)//Turn off alarm
-    {
-      setHeatMode(0);
-    }
-  }
+//  if (heatMode == 2) //Auto
+//  {
+//    if (millis() >= tempReceivedAlarm || temperature > termostat - 0.3)
+//    {
+//      valve(0);
+//    }
+//    else if (temperature < termostat + 0.1)
+//    {
+//      valve(1);
+//    }
+//  }
+//  else if (heatMode == 3) //Heat up
+//  {
+//    if (millis() >= heatUpAlarm)//Turn off alarm
+//    {
+//      setHeatMode(0);
+//    }
+//  }
 
   //Led strip
   Fire2012();
@@ -374,15 +368,26 @@ void setHeatMode(int m)
     valve(1);
     break;
 //-------------------------------------------------------------------------------- Auto
-  case 2:
-    heatMode = 2;
-    valve(0);
-    break;
+//  case 2:
+//    heatMode = 2;
+//    valve(0);
+//    break;
 //-------------------------------------------------------------------------------- Heat up
-  case 3:
-    heatUpAlarm = millis() + HEATUP_FREQ  ; //Set alarm to turn off valve
-    heatMode = 3;
-    valve(1);
+//  case 3:
+//    heatUpAlarm = millis() + HEATUP_FREQ  ; //Set alarm to turn off valve
+//    heatMode = 3;
+//    valve(1);
+//    break;
+//-------------------------------------------------------------------------------- Toggle
+  case 4:
+    if(heatMode == 0)
+    {
+      setHeatMode(1);
+    }
+    else
+    {
+      setHeatMode(0);
+    }
     break;
   }
 }
@@ -557,26 +562,7 @@ void terminal(String command)
   }
   else if(parmA == "heat")
   {
-    if (parmB == "cold")
-    {
-      setHeatMode(0);
-    }
-    else if (parmB == "heat")
-    {
-      setHeatMode(1);
-    }
-    else if (parmB == "auto")
-    {
-      setHeatMode(2);
-    }
-    else if (parmB == "heatup")
-    {
-      setHeatMode(3);
-    }
-    else
-    {
-      setHeatMode(0);
-    }
+    setHeatMode(parmB.toInt());
     eepromPut();
   }
 }

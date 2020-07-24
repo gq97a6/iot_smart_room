@@ -207,6 +207,9 @@ void setup()
   bme.begin();
 
   DCEAdd(UPDATE_FREQ, "upair;;;;", -1, "", "", "", "", "");
+
+  //Turn of after reset
+  terminal("bout;7;#000000");
 }
 
 void loop()
@@ -238,100 +241,31 @@ void loop()
   if(buttons[2][2] && 
   !buttons[0][1] && !buttons[1][1] && !buttons[3][1] && !buttons[4][1])
   {
-    delay(500);
-    switch(potenPos)
-    {
-      case 0:
-        client.publish("wenfan;", "0");
-        sendBrodcast("wen", "fan", String("0"), String(""), String(""));
-        break;
-        
-      case 1:
-        client.publish("wenfan;", "1");
-        sendBrodcast("wen", "fan", String("1"), String(""), String(""));
-        break;
-        
-      case 2:
-        client.publish("wenfan;", "2");
-        sendBrodcast("wen", "fan", String("2"), String(""), String(""));
-        break;
-        
-      case 3:
-        client.publish("wenfan;", "3");
-        sendBrodcast("wen", "fan", String("3"), String(""), String(""));
-        break;
-    }
+    sendBrodcast("wen", "fan", String("-1"), String(""), String(""));
   }
   
   //Heating control
   if(buttons[0][2] && 
   !buttons[1][1] && !buttons[2][1] && !buttons[3][1] && !buttons[4][1])
   {
-    delay(500);
     switch(potenPos)
     {
       case 0:
-        sendBrodcast("loz", "heat", String("cold"), String(""), String(""));
-        
-        DCEAdd(100, "infd;#0000FF;0;;", 5, "", "", "", "", "");
-        DCEAdd(200, "infd;#000000;0;;", 5, "", "", "", "", "");
-        DCEAdd(100, "infd;#0000FF;1;;", 5, "", "", "", "", "");
-        DCEAdd(200, "infd;#000000;1;;", 5, "", "", "", "", "");
-        DCEAdd(100, "infd;#0000FF;2;;", 5, "", "", "", "", "");
-        DCEAdd(200, "infd;#000000;2;;", 5, "", "", "", "", "");
-        
-        break;
-        
-      case 1:
-        sendBrodcast("loz", "heat", String("auto"), String(""), String(""));
-        DCEAdd(500, "infd;#FF0000;0;;", 3, "", "", "", "", "");
-        DCEAdd(1000, "infd;#000000;0;;", 3, "", "", "", "", "");
-        DCEAdd(1000, "infd;#FF0000;1;;", 3, "", "", "", "", "");
-        DCEAdd(1500, "infd;#000000;1;;", 3, "", "", "", "", "");
-        DCEAdd(500, "infd;#FF0000;2;;", 3, "", "", "", "", "");
-        DCEAdd(1000, "infd;#000000;2;;", 3, "", "", "", "", "");
-        
+        sendBrodcast("loz", "heat", String("0"), String(""), String(""));
+        terminal("bout;1;#0000FF");
+        DCEAdd(1000, "bout;7;#000000", 1, "", "", "", "", "");
         break;
         
       case 2:
-        sendBrodcast("loz", "heat", String("heatup"), String(""), String(""));
-        DCEAdd(1000, "infd;#FF0000;0;;", 2, "", "", "", "", "");
-        DCEAdd(1100, "infd;#000000;0;;", 2, "", "", "", "", "");
-        DCEAdd(1000, "infd;#FF0000;1;;", 2, "", "", "", "", "");
-        DCEAdd(1100, "infd;#000000;1;;", 2, "", "", "", "", "");
-        DCEAdd(1000, "infd;#FF0000;2;;", 2, "", "", "", "", "");
-        DCEAdd(1100, "infd;#000000;2;;", 2, "", "", "", "", "");
-        
-        break;
-        
-      case 3:
-        sendBrodcast("loz", "heat", String("heat"), String(""), String(""));
-        DCEAdd(100, "infd;#FF0000;0;;", 5, "", "", "", "", "");
-        DCEAdd(200, "infd;#000000;0;;", 5, "", "", "", "", "");
-        DCEAdd(100, "infd;#FF0000;1;;", 5, "", "", "", "", "");
-        DCEAdd(200, "infd;#000000;1;;", 5, "", "", "", "", "");
-        DCEAdd(100, "infd;#FF0000;2;;", 5, "", "", "", "", "");
-        DCEAdd(200, "infd;#000000;2;;", 5, "", "", "", "", "");
-        
+        sendBrodcast("loz", "heat", String("1"), String(""), String(""));
+        terminal("bout;2;#FF0000");
+        DCEAdd(1000, "bout;7;#000000", 1, "", "", "", "", "");
         break;
 
       case 4:
-        if(valve)
-        {
-          terminal("infd;#FF0000;0;;");
-          terminal("infd;#FF0000;1;;");
-          terminal("infd;#FF0000;2;;");
-        }
-        else
-        {
-          terminal("infd;#0000FF;0;;");
-          terminal("infd;#0000FF;1;;");
-          terminal("infd;#0000FF;2;;");
-        }
-        DCEAdd(1000, "infd;#000000;0;;", 1, "", "", "", "", "");
-        DCEAdd(1000, "infd;#000000;1;;", 1, "", "", "", "", "");
-        DCEAdd(1000, "infd;#000000;2;;", 1, "", "", "", "", "");
-        
+        sendBrodcast("loz", "heat", String("4"), String(""), String(""));
+        terminal("bout;4;#FF0000");
+        DCEAdd(1000, "bout;7;#000000", 1, "", "", "", "", "");
         break;
     }
   }
@@ -360,14 +294,8 @@ void loop()
     FastLED.show();
     sendBrodcast("loz", "shw", String(""), String(""), String(""));
 
-    DCEAdd(500, "infd;#FF0000;0;;", 5, "", "", "", "", "");
-    DCEAdd(1000, "infd;#000000;0;;", 5, "", "", "", "", "");
-
-    DCEAdd(500, "infd;#00FF00;1;;", 5, "", "", "", "", "");
-    DCEAdd(1000, "infd;#000000;1;;", 5, "", "", "", "", "");
-
-    DCEAdd(500, "infd;#0000FF;2;;", 5, "", "", "", "", "");
-    DCEAdd(1000, "infd;#000000;2;;", 5, "", "", "", "", "");
+    terminal("bout;7;#00FF00");
+    DCEAdd(1000, "bout;7;#000000", 1, "", "", "", "", "");
   }
   
   //Power on
@@ -453,6 +381,8 @@ void loop()
   //Restart
   if(analogRead(POTEN_PIN) == 0 && buttons[0][1] && buttons[1][1] && buttons[2][1] && buttons[3][1] && buttons[4][1])
   {
+    terminal("bout;7;#FF0000");
+    delay(500);
     ESP.restart();
   }
 
@@ -706,6 +636,7 @@ byte potenHandle()
   {
     potenPos = 4;
   }
+  
   return potenPos;
 }
 
@@ -1107,5 +1038,22 @@ void terminal(String command)
     
     String(pres).toCharArray(charArray, 8);
     client.publish("pres", charArray);
+  }
+  else if(parmA == "bout")
+  {
+    parmB = String(parmB.toInt(), BIN);
+    parmC.toCharArray(charArray, 8);
+    int color = toIntColor(charArray);
+  
+    //Read array backward, input colors into array form the front
+    for(int i=parmB.length()-1; i>=0; i--)
+    {
+      if(parmB.substring(i, i+1).toInt())
+      {
+        stripI[parmB.length()-1-i] = color;
+      }
+    }
+    
+    FastLED.show();
   }
 }
