@@ -208,7 +208,7 @@ void setup()
 
   DCEAdd(UPDATE_FREQ, "upair;;;;", -1, "", "", "", "", "");
 
-  //Turn of aafter reset
+  //Turn of after reset
   terminal("bout;7;#000000");
 }
 
