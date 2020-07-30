@@ -42,12 +42,14 @@ long mqttReconAlarm;
 byte gear;
 void setup()
 {
+  Serial.begin(115200);
+  
   pinMode(FIRST_PIN, OUTPUT);
   //pinMode(SECOND_PIN, OUTPUT);
   //pinMode(THIRD_PIN, OUTPUT);
 
   setGear(0);
-  
+
   //MQTT
   client.setServer(MQTT_SERVER, MQTT_PORT);
   client.setCallback(mqttCallback);
@@ -57,7 +59,7 @@ void setup()
   WiFi.begin(ssid, password);
 
   delay(1000);
-  if(WiFi.status() != WL_CONNECTED)
+  if (WiFi.status() != WL_CONNECTED)
   {
     Serial.println("notConnected!");
   }
@@ -95,7 +97,7 @@ void setup()
     ESP.restart();
   });
 
-  if(udp.listen(54091))
+  if (udp.listen(54091))
   {
     udp.onPacket([](AsyncUDPPacket packet)
     {
@@ -104,7 +106,7 @@ void setup()
       adr += (char)packet.data()[1];
       adr += (char)packet.data()[2];
 
-      if(adr == "wen" || adr == "glb")
+      if (adr == "wen" || adr == "glb")
       {
         String cmd = "";
         for (int i = 3; i < packet.length(); i++)
@@ -113,11 +115,11 @@ void setup()
         }
         terminal(cmd);
       }
-      
+
       //packet.printf("Got %u bytes of data", packet.length());
     });
   }
-  
+
   ArduinoOTA.begin();
 }
 
@@ -129,11 +131,11 @@ void loop()
 
 void conErrorHandle()
 {
-  if(WiFi.status() == WL_CONNECTED)
+  if (WiFi.status() == WL_CONNECTED)
   {
     ArduinoOTA.handle();
-    
-    if(!client.loop()) //No connection with mqtt server
+
+    if (!client.loop()) //No connection with mqtt server
     {
       if (millis() >= mqttReconAlarm)
       {
@@ -164,19 +166,19 @@ void mqttReconnect()
   if (client.connect(clientId.c_str(), MQTT_USER, MQTT_PASSWORD))
   {
     //Subscribe list
-    client.subscribe("wenfan;");
+    client.subscribe("wenfan");
   }
 }
 
 void setGear(int t)
 {
-  switch(t)
+  switch (t)
   {
     case 0:
       digitalWrite(FIRST_PIN, HIGH);
       gear = 0;
       break;
-      
+
     case 1:
       setGear(0);
       digitalWrite(FIRST_PIN, LOW);
@@ -184,7 +186,7 @@ void setGear(int t)
       break;
 
     case -1:
-      if(gear)
+      if (gear)
       {
         setGear(0);
       }
@@ -198,79 +200,45 @@ void setGear(int t)
 
 void mqttCallback(char* topic, byte* payload, unsigned int length)
 {
-  String cmd = "";
+  String cmd = String(topic).substring(3) + ';';
 
-  int i = 3;
-  while(true)
-  {
-    cmd += topic[i];
-    
-    if(topic[i] == ';')
-    {
-      break;
-    }
-    
-    i++;
-  }
-  
   for (int i = 0; i < length; i++)
   {
     cmd += (char)payload[i];
   }
-  
+
   cmd += ";;;";
-  
+
   terminal(cmd);
+  Serial.println(cmd);
 }
 
 void terminal(String command)
 {
-  String parmA = "";
-  String parmB = "";
-  String parmC = "";
-  String parmD = "";
+  //Create arrays
+  String cmd[20];
+  char cmdChar[40];
+  command.toCharArray(cmdChar, 40);
 
-  //Create array
-  char cmd[40];
-  command.toCharArray(cmd, 40);
-
-  //Slice array into 4 parameters, sample: prm1;prm2;prm3;prm4;
+  //Slice array into parameters
   int parm = 0;
   for (int i = 0; i < 40; i++)
   {
-    if(cmd[i] == ';')
+    if(cmdChar[i] == ';')
     {
       parm++;
     }
     else
     {
-      switch(parm)
-      {
-        case 0:
-          parmA += cmd[i];
-          break;
-
-        case 1:
-          parmB += cmd[i];
-          break;
-
-        case 2:
-          parmC += cmd[i];
-          break;
-
-        case 3:
-          parmD += cmd[i];
-          break;
-          
-      }
+      cmd[parm] += cmdChar[i];
     }
   }
 
-  if(parmA == "fan")
+  if (cmd[0] == "fan")
   {
-    setGear(parmB.toInt());
+    setGear(cmd[1].toInt());
   }
-  else if(parmA == "rst")
+  else if (cmd[0] == "rst")
   {
     ESP.restart();
   }

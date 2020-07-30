@@ -217,11 +217,11 @@ void mqttReconnect()
   if (client.connect(clientId.c_str(), MQTT_USER, MQTT_PASSWORD))
   {
     //Subscribe list
-    client.subscribe("lozcwip;");
-    client.subscribe("lozheat;");
-    client.subscribe("lozterm;");
-    client.subscribe("loz5;");
-    client.subscribe("lozanim;");
+    client.subscribe("lozcwip");
+    client.subscribe("lozheat");
+    client.subscribe("lozterm");
+    client.subscribe("loz5");
+    client.subscribe("lozanim");
   }
 }
 
@@ -428,28 +428,15 @@ void eepromGet()
 
 void mqttCallback(char* topic, byte* payload, unsigned int length)
 {
-  String cmd = "";
+  String cmd = String(topic).substring(3) + ';';
 
-  int i = 3;
-  while(true)
-  {
-    cmd += topic[i];
-    
-    if(topic[i] == ';')
-    {
-      break;
-    }
-    
-    i++;
-  }
-  
   for (int i = 0; i < length; i++)
   {
     cmd += (char)payload[i];
   }
-  
+
   cmd += ";;;";
-  
+
   terminal(cmd);
 }
 
@@ -462,62 +449,40 @@ void sendBrodcast(char* adr, char* cmd, String a, String b, String c)
 
 void terminal(String command)
 {
-  String parmA = "";
-  String parmB = "";
-  String parmC = "";
-  String parmD = "";
+  //Create arrays
+  String cmd[20];
+  char cmdChar[40];
+  command.toCharArray(cmdChar, 40);
 
-  //Create array
-  char cmd[40];
-  command.toCharArray(cmd, 40);
-
-  //Slice array into 4 parameters, sample: prm1;prm2;prm3;prm4;
+  //Slice array into parameters
   int parm = 0;
   for (int i = 0; i < 40; i++)
   {
-    if(cmd[i] == ';')
+    if(cmdChar[i] == ';')
     {
       parm++;
     }
     else
     {
-      switch(parm)
-      {
-        case 0:
-          parmA += cmd[i];
-          break;
-
-        case 1:
-          parmB += cmd[i];
-          break;
-
-        case 2:
-          parmC += cmd[i];
-          break;
-
-        case 3:
-          parmD += cmd[i];
-          break;
-          
-      }
+      cmd[parm] += cmdChar[i];
     }
   }
 
-  if(parmA == "air") //Temperature, humidity, pressure
+  if(cmd[0] == "air") //Temperature, humidity, pressure
   {
-    if (parmB.toFloat() > 0 && parmB.toFloat() < 40) //Validate
+    if (cmd[1].toFloat() > 0 && cmd[1].toFloat() < 40) //Validate
     {
       tempReceivedAlarm = millis() + TEMP_RECEIVED_FREQ; //Update temperature reset alarm
-      temperature = parmB.toFloat();
+      temperature = cmd[1].toFloat();
     }
     else
     {
       temperature = 100;
     }
   }
-  else if(parmA == "cwip") //Set one color for whole strip
+  else if(cmd[0] == "cwip") //Set one color for whole strip
   {
-    parmB.toCharArray(charArray, 8);
+    cmd[1].toCharArray(charArray, 8);
     int color = toIntColor(charArray);
     
     for (int i = 0; i < STRIP_LEN; i++)
@@ -527,42 +492,42 @@ void terminal(String command)
     
     FastLED.show();
   }
-  else if(parmA == "shw")
+  else if(cmd[0] == "shw")
   {
     FastLED.show();
   }
-  else if(parmA == "setd") //Set color of one diode
+  else if(cmd[0] == "setd") //Set color of one diode
   {
-    parmB.toCharArray(charArray, 8);
-    strip[parmC.toInt()] = toIntColor(charArray);
+    cmd[1].toCharArray(charArray, 8);
+    strip[cmd[2].toInt()] = toIntColor(charArray);
   }
-  else if(parmA == "term") //Set termostat
+  else if(cmd[0] == "term") //Set termostat
   {
-    termostat = parmB.toFloat();
+    termostat = cmd[1].toFloat();
     eepromPut();
   }
-  else if(parmA == "rst")
+  else if(cmd[0] == "rst")
   {
     ESP.restart();
   }
-  else if(parmA == "anim")
+  else if(cmd[0] == "anim")
   {
-    anim = parmB.toInt();
+    anim = cmd[1].toInt();
   }
-  else if(parmA == "5") //5V power supply
+  else if(cmd[0] == "5") //5V power supply
   {
-    if(parmB == "1")
+    if(cmd[1] == "1")
     {
       digitalWrite(SUPPLY_PIN, LOW);
     }
-    else if(parmB == "0")
+    else if(cmd[1] == "0")
     {
       digitalWrite(SUPPLY_PIN, HIGH);
     }
   }
-  else if(parmA == "heat")
+  else if(cmd[0] == "heat")
   {
-    setHeatMode(parmB.toInt());
+    setHeatMode(cmd[1].toInt());
     eepromPut();
   }
 }

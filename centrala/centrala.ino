@@ -274,10 +274,10 @@ void loop()
   if(millis() - buttonsHistoryTimestamp[4][0] > 1000 && buttonsHistoryState[4][0] && 
   !buttons[0][1] && !buttons[1][1] && !buttons[2][1] && !buttons[3][1])
   {
-    client.publish("loz5;", "0");
-    client.publish("wenfan;", "0");
+    client.publish("loz5", "0");
+    client.publish("wenfan", "0");
     
-    sendBrodcast("loz", "5", String("off"), String(""), String(""));
+    sendBrodcast("loz", "5", String("0"), String(""), String(""));
     sendBrodcast("wen", "fan", String("0"), String(""), String(""));
 
     c5 = 0;
@@ -308,9 +308,8 @@ void loop()
         c5 = 1;
         digitalWrite(SUPPLY_5_PIN, LOW);
         break;
-        
       case 1:
-        client.publish("loz5;", "1");
+        client.publish("loz5", "1");
         sendBrodcast("loz", "5", String("on"), String(""), String(""));
         break;
         
@@ -324,7 +323,7 @@ void loop()
         c5 = 1;
         digitalWrite(SUPPLY_5_PIN, LOW);
         
-        client.publish("loz5;", "1");
+        client.publish("loz5", "1");
         sendBrodcast("loz", "5", String("on"), String(""), String(""));
   
         delay(1000);
@@ -346,7 +345,7 @@ void loop()
         break;
         
       case 1:
-        client.publish("loz5;", "0");
+        client.publish("loz5", "0");
         sendBrodcast("loz", "5", String("off"), String(""), String(""));
         break;
         
@@ -360,7 +359,7 @@ void loop()
         c5 = 1;
         digitalWrite(SUPPLY_5_PIN, LOW);
         
-        client.publish("loz5;", "1");
+        client.publish("loz5", "1");
         sendBrodcast("loz", "5", String("on"), String(""), String(""));
   
         delay(1000);
@@ -372,7 +371,7 @@ void loop()
         c5 = 0;
         digitalWrite(SUPPLY_5_PIN, HIGH);
         
-        client.publish("loz5;", "0");
+        client.publish("loz5", "0");
         sendBrodcast("loz", "5", String("off"), String(""), String(""));
         break;
     }
@@ -441,11 +440,11 @@ void mqttReconnect()
   if (client.connect(clientId.c_str(), MQTT_USER, MQTT_PASSWORD))
   {
     //Subscribe list
-    client.subscribe("cen5;");
-    client.subscribe("cen12;");
-    client.subscribe("cencwip;");
-    client.subscribe("cenanim;");
-    client.subscribe("cenbotim;");
+    client.subscribe("cen5");
+    client.subscribe("cen12");
+    client.subscribe("cencwip");
+    client.subscribe("cenanim");
+    client.subscribe("cenbotim");
     client.subscribe("valve");
   }
 }
@@ -813,84 +812,50 @@ String decToHex(byte decValue, byte desiredStringLength) {
 
 void mqttCallback(char* topic, byte* payload, unsigned int length)
 {
-  String cmd = "";
+  String cmd = String(topic).substring(3) + ';';
 
-  int i = 3;
-  while(true)
-  {
-    cmd += topic[i];
-    
-    if(topic[i] == ';')
-    {
-      break;
-    }
-    
-    i++;
-  }
-  
   for (int i = 0; i < length; i++)
   {
     cmd += (char)payload[i];
   }
-  
+
   cmd += ";;;";
-  
+
   terminal(cmd);
 }
 
+
 void terminal(String command)
 {
-  String parmA = "";
-  String parmB = "";
-  String parmC = "";
-  String parmD = "";
+  //Create arrays
+  String cmd[20];
+  char cmdChar[40];
+  command.toCharArray(cmdChar, 40);
 
-  //Create array
-  char cmd[40];
-  command.toCharArray(cmd, 40);
-
-  //Slice array into 4 parameters, sample: prm1;prm2;prm3;prm4;
+  //Slice array into parameters
   int parm = 0;
   for (int i = 0; i < 40; i++)
   {
-    if(cmd[i] == ';')
+    if(cmdChar[i] == ';')
     {
       parm++;
     }
     else
     {
-      switch(parm)
-      {
-        case 0:
-          parmA += cmd[i];
-          break;
-
-        case 1:
-          parmB += cmd[i];
-          break;
-
-        case 2:
-          parmC += cmd[i];
-          break;
-
-        case 3:
-          parmD += cmd[i];
-          break;
-          
-      }
+      cmd[parm] += cmdChar[i];
     }
   }
 
   //-------------------------------------------------------------------------------- Set one color for whole strip
-  if(parmA == "cwip")
+  if(cmd[0] == "cwip")
   {
-    parmB.toUpperCase();
-    parmB.toCharArray(charArray, 8);
+    cmd[1].toUpperCase();
+    cmd[1].toCharArray(charArray, 8);
     int colorA = toIntColor(charArray);
 
-    parmB = parmB.substring(0,3) + decToHex(hexToDec(parmB.substring(3,5)) * 70/100, 2) + decToHex(hexToDec(parmB.substring(5)) * 65/100, 2);
-    parmB.toUpperCase();
-    parmB.toCharArray(charArray, 8);
+    cmd[1] = cmd[1].substring(0,3) + decToHex(hexToDec(cmd[1].substring(3,5)) * 70/100, 2) + decToHex(hexToDec(cmd[1].substring(5)) * 65/100, 2);
+    cmd[1].toUpperCase();
+    cmd[1].toCharArray(charArray, 8);
     int colorB = toIntColor(charArray);
     
     for (int i = 0; i < STRIP_LEN_L; i++)
@@ -922,107 +887,107 @@ void terminal(String command)
     FastLED.show();
   }
   //-------------------------------------------------------------------------------- Set color of one diode
-  else if(parmA == "setd")
+  else if(cmd[0] == "setd")
   {
-    parmB.toUpperCase();
-    parmB.toCharArray(charArray, 8);
+    cmd[1].toUpperCase();
+    cmd[1].toCharArray(charArray, 8);
     int colorA = toIntColor(charArray);
 
-    parmB = parmB.substring(0,3) + decToHex(hexToDec(parmB.substring(3,5)) * 70/100, 2) + decToHex(hexToDec(parmB.substring(5)) * 65/100, 2);
-    parmB.toUpperCase();
-    parmB.toCharArray(charArray, 8);
+    cmd[1] = cmd[1].substring(0,3) + decToHex(hexToDec(cmd[1].substring(3,5)) * 70/100, 2) + decToHex(hexToDec(cmd[1].substring(5)) * 65/100, 2);
+    cmd[1].toUpperCase();
+    cmd[1].toCharArray(charArray, 8);
     int colorB = toIntColor(charArray);
 
-    if(parmC.toInt()<2)
+    if(cmd[2].toInt()<2)
     {
-      stripL[parmC.toInt()] = colorA;
-      stripP[parmC.toInt()] = colorA;
+      stripL[cmd[2].toInt()] = colorA;
+      stripP[cmd[2].toInt()] = colorA;
     }
-    else if(parmC.toInt()<6)
+    else if(cmd[2].toInt()<6)
     {
-      stripL[parmC.toInt()] = colorA;
-      stripP[parmC.toInt()] = colorB;
+      stripL[cmd[2].toInt()] = colorA;
+      stripP[cmd[2].toInt()] = colorB;
     }
     else
     {
-      stripL[parmC.toInt()] = colorB;
-      stripP[parmC.toInt()] = colorB;
+      stripL[cmd[2].toInt()] = colorB;
+      stripP[cmd[2].toInt()] = colorB;
     }
     
     FastLED.show();
   }
-  else if(parmA == "infd")
+  else if(cmd[0] == "infd")
   {
-    parmB.toCharArray(charArray, 8);
+    cmd[1].toCharArray(charArray, 8);
     int color = toIntColor(charArray);
-    stripI[parmC.toInt()] = color;
+    stripI[cmd[2].toInt()] = color;
 
     FastLED.show();
   }
   //--------------------------------------------------------------------------------
-  else if(parmA == "rst")
+  else if(cmd[0] == "rst")
   {
     ESP.restart();
   }
   //--------------------------------------------------------------------------------
-  else if(parmA == "anim")
+  else if(cmd[0] == "anim")
   {
-    anim = parmB.toInt();
+    anim = cmd[1].toInt();
   }
   //-------------------------------------------------------------------------------- 5V power supply
-  else if(parmA == "5")
+  else if(cmd[0] == "5")
   {
-    if(parmB == "1")
+    if(cmd[1] == "1")
     {
       digitalWrite(SUPPLY_5_PIN, LOW);
     }
-    else if(parmB == "0")
+    else if(cmd[1] == "0")
     {
       digitalWrite(SUPPLY_5_PIN, HIGH);
     }
   }
   //-------------------------------------------------------------------------------- 12V power supply
-  else if(parmA == "12")
+  else if(cmd[0] == "12")
   {
-    if(parmB == "1")
+    if(cmd[1] == "1")
     {
       digitalWrite(SUPPLY_12_PIN, LOW);
     }
-    else if(parmB == "0")
+    else if(cmd[1] == "0")
     {
       digitalWrite(SUPPLY_12_PIN, HIGH);
     }
   }
-  else if(parmA == "bip")
+  else if(cmd[0] == "bip")
   {
-    ledcWrite(0, parmB.toInt());
+    ledcWrite(0, cmd[1].toInt());
   }
-  else if(parmA == "botim")
+  else if(cmd[0] == "botim")
   {
-    if(parmB.toInt() == 0)
+    if(cmd[1].toInt() == 0)
     {
       //Turn off
       DCEEdit(0, "black", 0, "", "", "", "", "");
     }
     else
     {
-      long timer = parmB.toInt() * 60 * 1000; //Minutes to milliseconds
+      long timer = cmd[1].toInt() * 60 * 1000; //Minutes to milliseconds
       DCEAdd(timer, "black", 1, "wen", "fan", "0", "", "");
       DCEAdd(timer, "black", 1, "loz", "5", "0", "", "");
       DCEAdd(timer, "black", 1, "loz", "anim", "0", "", "");
     }
   }
-  else if(parmA == "black")
+  else if(cmd[0] == "black")
   {
     terminal("12;0;;;");
     terminal("5;0;;;");
     terminal("anim;0;;;");
   }
-  else if(parmA == "vlv")
+  else if(cmd[0] == "vlv")
   {
-    valve = parmB.toInt();
+    valve = cmd[1].toInt();
   }
-  else if(parmA == "upair")
+  else if(cmd[0] == "upair")
   {
     float temp = bme.readTemperature();
     int humi = bme.readHumidity();
@@ -1039,18 +1004,18 @@ void terminal(String command)
     String(pres).toCharArray(charArray, 8);
     client.publish("pres", charArray);
   }
-  else if(parmA == "bout")
+  else if(cmd[0] == "bout")
   {
-    parmB = String(parmB.toInt(), BIN);
-    parmC.toCharArray(charArray, 8);
+    cmd[1] = String(cmd[1].toInt(), BIN);
+    cmd[2].toCharArray(charArray, 8);
     int color = toIntColor(charArray);
   
     //Read array backward, input colors into array form the front
-    for(int i=parmB.length()-1; i>=0; i--)
+    for(int i=cmd[1].length()-1; i>=0; i--)
     {
-      if(parmB.substring(i, i+1).toInt())
+      if(cmd[1].substring(i, i+1).toInt())
       {
-        stripI[parmB.length()-1-i] = color;
+        stripI[cmd[1].length()-1-i] = color;
       }
     }
     
