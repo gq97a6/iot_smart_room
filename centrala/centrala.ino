@@ -385,9 +385,7 @@ void loop()
   //Restart
   if(analogRead(POTEN_PIN) == 0 && buttons[0][1] && buttons[1][1] && buttons[2][1] && buttons[3][1] && buttons[4][1])
   {
-    terminal("bout;7;#FF0000");
-    delay(500);
-    ESP.restart();
+    terminal("reset");
   }
 
   //Led strips
@@ -438,8 +436,8 @@ void conErrorHandle()
 void mqttReconnect()
 {
   //Create a random client ID
-  String clientId = "ESP32Client-";
-  clientId += String(random(0xffff), HEX);
+  String clientId = "ESP32#";
+  clientId += ADDRESS;
 
   // Attempt to connect
   if (client.connect(clientId.c_str(), MQTT_USER, MQTT_PASSWORD))
@@ -771,30 +769,56 @@ String decToHex(byte decValue, byte desiredStringLength) {
 //-------------------------------------------------------------------------------- Callbacks
 void mqttCallback(char* topic, byte* payload, unsigned int length)
 {
-  if(String(topic) == "terminal") //Terminal input
+  if (String(topic) == "terminal") //Terminal input
   {
-    String payloadS;
-    for (int i = 0; i < length; i++)
+    //Extract adress
+    String adr = "";
+    int i;
+    for (i = 0; i < length; i++)
     {
-      payloadS += (char)payload[i];
+      adr += (char)payload[i];
+      if ((char)payload[i+1] == ';')
+      {
+        break;
+      }
     }
-
-    if(payloadS.substring(0,3) == "cen") //Check address
+    
+    if (adr == ADDRESS)
     {
-      String cmd = String(topic).substring(3);
+      String cmd;
+      for (int j = i + 2; j < length; j++)
+      {
+        cmd += (char)payload[j];
+      }
+      
       terminal(cmd);
     }
   }
-  else if(String(topic).substring(0,3) == "glb" || String(topic).substring(0,3) == "cen") ////Check address, standard input
+  else //Standard input
   {
-    String cmd = String(topic).substring(3) + ';';
-    
-    for (int i = 0; i < length; i++)
+    //Extract adress
+    String adr = "";
+    int i;
+    for (i = 0; i < sizeof(topic); i++)
     {
-      cmd += (char)payload[i];
+      adr += topic[i];
+      if (topic[i+1] == ';')
+      {
+        break;
+      }
     }
+
+    if(adr == ADDRESS)
+    {
+      String cmd = String(topic).substring(i+2) + ';';
   
-    terminal(cmd);
+      for (int i = 0; i < length; i++)
+      {
+        cmd += (char)payload[i];
+      }
+  
+      terminal(cmd);
+    }
   }
 }
 
@@ -819,7 +843,6 @@ void terminal(String command)
     }
   }
 
-  //-------------------------------------------------------------------------------- Set one color for whole strip
   if(cmd[0] == "cwip")
   {
     cmd[1].toUpperCase();
@@ -900,6 +923,8 @@ void terminal(String command)
   //--------------------------------------------------------------------------------
   else if(cmd[0] == "reset")
   {
+    terminal("bout;7;#FF0000");
+    delay(500);
     ESP.restart();
   }
   //--------------------------------------------------------------------------------
@@ -999,7 +1024,7 @@ void terminal(String command)
   else if(cmd[0] == "sendBrodcast") //address, command, A, B, C...
   {
     String toSend;
-    toSend += cmd[1] + cmd[2]; //Address and command
+    toSend += cmd[1] + ';' + cmd[2]; //Address and command
     
     //Parameters
     int i = 3;

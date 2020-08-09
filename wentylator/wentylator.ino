@@ -119,12 +119,12 @@ void setup()
       for (int i = 0; i < packet.length(); i++)
       {
         adr += (char)packet.data()[i];
-        if((char)packet.data()[i+1] == ';')
+        if ((char)packet.data()[i + 1] == ';')
         {
           break;
         }
       }
-  
+
       if (adr == ADDRESS || adr == "glb")
       {
         String cmd = "";
@@ -176,8 +176,8 @@ void conErrorHandle()
 void mqttReconnect()
 {
   //Create a random client ID
-  String clientId = "ESP32Client-";
-  clientId += String(random(0xffff), HEX);
+  String clientId = "ESP32#";
+  clientId += ADDRESS;
 
   // Attempt to connect
   if (client.connect(clientId.c_str(), MQTT_USER, MQTT_PASSWORD))
@@ -189,23 +189,23 @@ void mqttReconnect()
 
 void DCEHandle()
 {
-  for(int i=0; i<MAX_DCE_TIMERS; i++)
+  for (int i = 0; i < MAX_DCE_TIMERS; i++)
   {
-    if(millis() >= DCETimers[i][0] && DCELoop[i] != 0)
+    if (millis() >= DCETimers[i][0] && DCELoop[i] != 0)
     {
       //Execute command
       terminal(DCECommand[i]);
 
-      if(DCELoop[i] == -1) // Infinite, extend
+      if (DCELoop[i] == -1) // Infinite, extend
       {
         DCETimers[i][0] = millis() + DCETimers[i][1];
       }
-      else if(DCELoop[i] > 1) //X times, extend, decrease
+      else if (DCELoop[i] > 1) //X times, extend, decrease
       {
         DCETimers[i][0] = millis() + DCETimers[i][1];
         DCELoop[i] -= 1;
       }
-      else if(DCELoop[i] == 1) //Close DCE, its last iteration
+      else if (DCELoop[i] == 1) //Close DCE, its last iteration
       {
         DCELoop[i] = 0;
       }
@@ -215,9 +215,9 @@ void DCEHandle()
 
 void DCEAdd(long timer, String command, int loops)
 {
-  for(int i=0; i<MAX_DCE_TIMERS; i++)
+  for (int i = 0; i < MAX_DCE_TIMERS; i++)
   {
-    if(DCELoop[i] == 0) //Look for first empty
+    if (DCELoop[i] == 0) //Look for first empty
     {
       //Command
       DCETimers[i][0] = timer + millis();
@@ -233,24 +233,24 @@ void DCEAdd(long timer, String command, int loops)
 bool DCEEdit(long timer, String command, int loops)
 {
   bool edited = 0;
-  
-  for(int i=0; i<MAX_DCE_TIMERS; i++)
+
+  for (int i = 0; i < MAX_DCE_TIMERS; i++)
   {
-    if(DCECommand[i] == command || DCELoop[i] != 0) //Look for desired command and edit
+    if (DCECommand[i] == command || DCELoop[i] != 0) //Look for desired command and edit
     {
       edited = 1;
-      
+
       //Command
-      if(timer > 0)
+      if (timer > 0)
       {
         DCETimers[i][0] = timer + millis();
         DCETimers[i][1] = timer;
       }
-      else if(timer == 0)
-      {  
+      else if (timer == 0)
+      {
         DCETimers[i][0] = 0;
       }
-      
+
       DCECommand[i] = command;
       DCELoop[i] = loops;
     }
@@ -262,30 +262,56 @@ bool DCEEdit(long timer, String command, int loops)
 //-------------------------------------------------------------------------------- Callbacks
 void mqttCallback(char* topic, byte* payload, unsigned int length)
 {
-  if(String(topic) == "terminal") //Terminal input
+  if (String(topic) == "terminal") //Terminal input
   {
-    String payloadS;
-    for (int i = 0; i < length; i++)
+    //Extract adress
+    String adr = "";
+    int i;
+    for (i = 0; i < length; i++)
     {
-      payloadS += (char)payload[i];
+      adr += (char)payload[i];
+      if ((char)payload[i+1] == ';')
+      {
+        break;
+      }
     }
-
-    if(payloadS.substring(0,3) == "cen") //Check address
+    
+    if (adr == ADDRESS)
     {
-      String cmd = String(topic).substring(3);
+      String cmd;
+      for (int j = i + 2; j < length; j++)
+      {
+        cmd += (char)payload[j];
+      }
+      
       terminal(cmd);
     }
   }
-  else if(String(topic).substring(0,3) == "glb" || String(topic).substring(0,3) == "cen") ////Check address, standard input
+  else //Standard input
   {
-    String cmd = String(topic).substring(3) + ';';
-    
-    for (int i = 0; i < length; i++)
+    //Extract adress
+    String adr = "";
+    int i;
+    for (i = 0; i < sizeof(topic); i++)
     {
-      cmd += (char)payload[i];
+      adr += topic[i];
+      if (topic[i+1] == ';')
+      {
+        break;
+      }
     }
+
+    if(adr == ADDRESS)
+    {
+      String cmd = String(topic).substring(i+2) + ';';
   
-    terminal(cmd);
+      for (int i = 0; i < length; i++)
+      {
+        cmd += (char)payload[i];
+      }
+  
+      terminal(cmd);
+    }
   }
 }
 
@@ -341,14 +367,14 @@ void terminal(String command)
   {
     ESP.restart();
   }
-  else if(cmd[0] == "sendBrodcast") //address, command, A, B, C...
+  else if (cmd[0] == "sendBrodcast") //address, command, A, B, C...
   {
     String toSend;
     toSend += cmd[1] + cmd[2]; //Address and command
-    
+
     //Parameters
     int i = 3;
-    if(cmd[i] != "")
+    if (cmd[i] != "")
     {
       toSend += ';';
       toSend += cmd[i];

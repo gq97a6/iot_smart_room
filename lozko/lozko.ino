@@ -1,6 +1,7 @@
+//-------------------------------------------------------------------------------- Variables
 //Variables
 #define FRAMES_PER_SECOND 120
-
+#define ADDRESS "loz"
 #define STRIP_LEN 101
 #define STRIP_PIN 13
 
@@ -22,9 +23,14 @@
 #define MQTT_PASSWORD "r5Vk!@z&uZBY&W%h"
 const char* MQTT_SERVER = "192.168.0.125";
 
+//WiFi
 const char* ssid = "Wi-Fi 2.4GHz";
 const char* password = "ceF78*Tay90!hiQ13@";
 
+//UDP
+#define UDP_PORT 54091
+
+//-------------------------------------------------------------------------------- Libraries
 //EEPROM
 #include <Preferences.h>
 Preferences preferences;
@@ -198,18 +204,14 @@ void conErrorHandle()
 void mqttReconnect()
 {
   //Create a random client ID
-  String clientId = "ESP32Client-";
-  clientId += String(random(0xffff), HEX);
+  String clientId = "ESP32#";
+  clientId += ADDRESS;
 
   // Attempt to connect
   if (client.connect(clientId.c_str(), MQTT_USER, MQTT_PASSWORD))
   {
     //Subscribe list
-    client.subscribe("lozcwip");
-    client.subscribe("lozheat");
-    client.subscribe("lozterm");
-    client.subscribe("loz5");
-    client.subscribe("lozanim");
+    client.subscribe("#"); 
   }
 }
 
@@ -359,30 +361,56 @@ void eepromGet()
 
 void mqttCallback(char* topic, byte* payload, unsigned int length)
 {
-  if(String(topic) == "terminal") //Terminal input
+  if (String(topic) == "terminal") //Terminal input
   {
-    String payloadS;
-    for (int i = 0; i < length; i++)
+    //Extract adress
+    String adr = "";
+    int i;
+    for (i = 0; i < length; i++)
     {
-      payloadS += (char)payload[i];
+      adr += (char)payload[i];
+      if ((char)payload[i+1] == ';')
+      {
+        break;
+      }
     }
-
-    if(payloadS.substring(0,3) == "cen") //Check address
+    
+    if (adr == ADDRESS)
     {
-      String cmd = String(topic).substring(3);
+      String cmd;
+      for (int j = i + 2; j < length; j++)
+      {
+        cmd += (char)payload[j];
+      }
+      
       terminal(cmd);
     }
   }
-  else if(String(topic).substring(0,3) == "glb" || String(topic).substring(0,3) == "cen") ////Check address, standard input
+  else //Standard input
   {
-    String cmd = String(topic).substring(3) + ';';
-    
-    for (int i = 0; i < length; i++)
+    //Extract adress
+    String adr = "";
+    int i;
+    for (i = 0; i < sizeof(topic); i++)
     {
-      cmd += (char)payload[i];
+      adr += topic[i];
+      if (topic[i+1] == ';')
+      {
+        break;
+      }
     }
+
+    if(adr == ADDRESS)
+    {
+      String cmd = String(topic).substring(i+2) + ';';
   
-    terminal(cmd);
+      for (int i = 0; i < length; i++)
+      {
+        cmd += (char)payload[i];
+      }
+  
+      terminal(cmd);
+    }
   }
 }
 
@@ -445,7 +473,7 @@ void terminal(String command)
     termostat = cmd[1].toFloat();
     eepromPut();
   }
-  else if(cmd[0] == "rst")
+  else if(cmd[0] == "reset")
   {
     ESP.restart();
   }
