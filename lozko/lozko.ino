@@ -79,7 +79,7 @@ void setup()
   digitalWrite(VALVE_PIN, HIGH);
   digitalWrite(SUPPLY_PIN, HIGH);
 
-  setHeatMode(heatMode);
+  terminal("heat;" + String(heatMode));
   
   FastLED.addLeds<WS2812B, STRIP_PIN, GRB>(strip, STRIP_LEN).setCorrection(CRGB(255,255,255));
   FastLED.setBrightness(255);
@@ -119,19 +119,26 @@ void setup()
     else if (error == OTA_END_ERROR) Serial.println("End Failed");
   });
 
-  if(udp.listen(54091))
+  if (udp.listen(UDP_PORT))
   {
     udp.onPacket([](AsyncUDPPacket packet)
     {
+      //Extract adress
       String adr = "";
-      adr += (char)packet.data()[0];
-      adr += (char)packet.data()[1];
-      adr += (char)packet.data()[2];
+      for (int i = 0; i < packet.length(); i++)
+      {
+        adr += (char)packet.data()[i];
+        if((char)packet.data()[i+1] == ';')
+        {
+          break;
+        }
+      }
 
-      if(adr == "loz" || adr == "glb")
+      //Execute command
+      if (adr == ADDRESS || adr == "glb")
       {
         String cmd = "";
-        for (int i = 3; i < packet.length(); i++)
+        for (int i = 4; i < packet.length(); i++)
         {
           cmd += (char)packet.data()[i];
         }
@@ -146,25 +153,6 @@ void setup()
 void loop()
 {
   conErrorHandle();
-
-//  if (heatMode == 2) //Auto
-//  {
-//    if (millis() >= tempReceivedAlarm || temperature > termostat - 0.3)
-//    {
-//      valve(0);
-//    }
-//    else if (temperature < termostat + 0.1)
-//    {
-//      valve(1);
-//    }
-//  }
-//  else if (heatMode == 3) //Heat up
-//  {
-//    if (millis() >= heatUpAlarm)//Turn off alarm
-//    {
-//      setHeatMode(0);
-//    }
-//  }
 
   //Led strip
   Fire2012();
@@ -353,63 +341,6 @@ int toIntColor(char hexColor[])
   return color;
 }
 
-void setHeatMode(int m)
-{
-  switch (m)
-//-------------------------------------------------------------------------------- Cold 
-  case 0:
-  {
-    heatMode = 0;
-    valve(0);
-    break;
-//-------------------------------------------------------------------------------- Heat
-  case 1:
-    heatMode = 1;
-    valve(1);
-    break;
-//-------------------------------------------------------------------------------- Auto
-//  case 2:
-//    heatMode = 2;
-//    valve(0);
-//    break;
-//-------------------------------------------------------------------------------- Heat up
-//  case 3:
-//    heatUpAlarm = millis() + HEATUP_FREQ  ; //Set alarm to turn off valve
-//    heatMode = 3;
-//    valve(1);
-//    break;
-//-------------------------------------------------------------------------------- Toggle
-  case 4:
-    if(heatMode == 0)
-    {
-      setHeatMode(1);
-    }
-    else
-    {
-      setHeatMode(0);
-    }
-    break;
-  }
-}
-
-void valve(bool pos)
-{
-  if (pos && !valveS)
-  {
-    valveS = pos;
-    digitalWrite(VALVE_PIN , LOW);
-    client.publish("valve", "1");
-    sendBrodcast("glb", "vlv", String("1"), String(""), String(""));
-  }
-  else if (!pos && valveS)
-  {
-    valveS = pos;
-    digitalWrite(VALVE_PIN , HIGH);
-    client.publish("valve", "0");
-    sendBrodcast("glb", "vlv", String("0"), String(""), String(""));
-  }
-}
-
 void eepromPut()
 {
   preferences.putDouble("hUpAlr", heatUpAlarm);
@@ -428,23 +359,31 @@ void eepromGet()
 
 void mqttCallback(char* topic, byte* payload, unsigned int length)
 {
-  String cmd = String(topic).substring(3) + ';';
-
-  for (int i = 0; i < length; i++)
+  if(String(topic) == "terminal") //Terminal input
   {
-    cmd += (char)payload[i];
+    String payloadS;
+    for (int i = 0; i < length; i++)
+    {
+      payloadS += (char)payload[i];
+    }
+
+    if(payloadS.substring(0,3) == "cen") //Check address
+    {
+      String cmd = String(topic).substring(3);
+      terminal(cmd);
+    }
   }
-
-  cmd += ";;;";
-
-  terminal(cmd);
-}
-
-void sendBrodcast(char* adr, char* cmd, String a, String b, String c)
-{
-  char toSend[40];
-  snprintf(toSend, 40, "%s%s;%s;%s;%s;", adr, cmd, a, b, c);
-  udp.broadcastTo(toSend, 54091);
+  else if(String(topic).substring(0,3) == "glb" || String(topic).substring(0,3) == "cen") ////Check address, standard input
+  {
+    String cmd = String(topic).substring(3) + ';';
+    
+    for (int i = 0; i < length; i++)
+    {
+      cmd += (char)payload[i];
+    }
+  
+    terminal(cmd);
+  }
 }
 
 void terminal(String command)
@@ -527,7 +466,61 @@ void terminal(String command)
   }
   else if(cmd[0] == "heat")
   {
-    setHeatMode(cmd[1].toInt());
+    switch (cmd[1].toInt())
+    {
+      case 0: //Cold
+        heatMode = 0; terminal("valve;0"); break;
+        
+      case 1: //Heat
+        heatMode = 1; terminal("valve;1"); break;
+        
+      case 4: //Toggle
+        if(heatMode == 0)
+        {
+          terminal("heat;1");
+        }
+        else
+        {
+          terminal("heat;0");
+        }
+        break;
+    }
+    
     eepromPut();
+  }
+  else if(cmd[0] == "valve")
+  {
+    bool pos = cmd[1].toInt();
+    if (pos && !valveS)
+    {
+      valveS = pos;
+      digitalWrite(VALVE_PIN , LOW);
+      client.publish("valve", "1");
+      terminal("sendBrodcast;glb;vlv;1");
+    }
+    else if (!pos && valveS)
+    {
+      valveS = pos;
+      digitalWrite(VALVE_PIN , HIGH);
+      client.publish("valve", "0");
+      terminal("sendBrodcast;glb;vlv;0");
+    }
+  }
+  else if(cmd[0] == "sendBrodcast") //address, command, A, B, C...
+  {
+    String toSend;
+    toSend += cmd[1] + cmd[2]; //Address and command
+    
+    //Parameters
+    int i = 3;
+    if(cmd[i] != "")
+    {
+      toSend += ';';
+      toSend += cmd[i];
+    }
+
+    char toSendA[40];
+    toSend.toCharArray(toSendA, 40);
+    udp.broadcastTo(toSendA, UDP_PORT);
   }
 }

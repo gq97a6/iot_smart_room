@@ -3,6 +3,7 @@
 #define BUTTON_SLEEP 100 //Ignore button after change
 #define BUTTON_CHECK 10 //Check state every
 #define MAX_DCE_TIMERS 20
+#define ADDRESS "cen"
 
 #define STRIP_LEN_L 78
 #define STRIP_LEN_P 78
@@ -37,7 +38,7 @@ const char* password = "ceF78*Tay90!hiQ13@";
 //Delayed command execution
 long DCETimers[MAX_DCE_TIMERS][2]; //When, distance
 int DCELoop[MAX_DCE_TIMERS]; //-1 == retain, >0 == loop
-String DCECommand[MAX_DCE_TIMERS][6]; //Command OR address, cmd, A, B, C
+String DCECommand[MAX_DCE_TIMERS]; //Command
 
 //-------------------------------------------------------------------------------- Libraries
 //EEPROM
@@ -100,7 +101,7 @@ int buttons[5][4] =
   {25, 0, 0, 0},
   {33, 0, 0, 0},
   {32, 0, 0, 0}};
-  //Pin, state, ascending, descending (now)
+  //Pin, state, ascending, descending
   
 char charArray[8];
 uint8_t gHue;
@@ -113,7 +114,6 @@ bool c12;
 bool topBar;
 byte potenPos;
 bool valve;
-char sqlArray[200];
 String queryS;
     
 void setup()
@@ -181,23 +181,29 @@ void setup()
     ESP.restart();
   });
 
-  if(udp.listen(UDP_PORT))
+  if (udp.listen(UDP_PORT))
   {
     udp.onPacket([](AsyncUDPPacket packet)
     {
+      //Extract adress
       String adr = "";
-      adr += (char)packet.data()[0];
-      adr += (char)packet.data()[1];
-      adr += (char)packet.data()[2];
+      for (int i = 0; i < packet.length(); i++)
+      {
+        adr += (char)packet.data()[i];
+        if((char)packet.data()[i+1] == ';')
+        {
+          break;
+        }
+      }
 
-      if(adr == "cen" || adr == "glb")
+      //Execute command
+      if (adr == ADDRESS || adr == "glb")
       {
         String cmd = "";
-        for (int i = 3; i < packet.length(); i++)
+        for (int i = 4; i < packet.length(); i++)
         {
           cmd += (char)packet.data()[i];
         }
-        
         terminal(cmd);
       }
     });
@@ -206,7 +212,7 @@ void setup()
   ArduinoOTA.begin();
   bme.begin();
 
-  DCEAdd(UPDATE_FREQ, "upair;;;;", -1, "", "", "", "", "");
+  DCEAdd(UPDATE_FREQ, "upair", -1);
 
   //Turn of after reset
   terminal("bout;7;#000000");
@@ -241,7 +247,7 @@ void loop()
   if(buttons[2][2] && 
   !buttons[0][1] && !buttons[1][1] && !buttons[3][1] && !buttons[4][1])
   {
-    sendBrodcast("wen", "fan", String("-1"), String(""), String(""));
+    terminal("sendBrodcast;wen;fan;-1");
   }
   
   //Heating control
@@ -251,21 +257,21 @@ void loop()
     switch(potenPos)
     {
       case 0:
-        sendBrodcast("loz", "heat", String("0"), String(""), String(""));
+        terminal("sendBrodcast;loz;heat;0");
         terminal("bout;1;#0000FF");
-        DCEAdd(1000, "bout;7;#000000", 1, "", "", "", "", "");
+        DCEAdd(1000, "bout;7;#000000", 1);
         break;
         
       case 2:
-        sendBrodcast("loz", "heat", String("1"), String(""), String(""));
+        terminal("sendBrodcast;loz;heat;1");
         terminal("bout;2;#FF0000");
-        DCEAdd(1000, "bout;7;#000000", 1, "", "", "", "", "");
+        DCEAdd(1000, "bout;7;#000000", 1);
         break;
 
       case 4:
-        sendBrodcast("loz", "heat", String("4"), String(""), String(""));
+        terminal("sendBrodcast;loz;heat;4");
         terminal("bout;4;#FF0000");
-        DCEAdd(1000, "bout;7;#000000", 1, "", "", "", "", "");
+        DCEAdd(1000, "bout;7;#000000", 1);
         break;
     }
   }
@@ -277,8 +283,8 @@ void loop()
     client.publish("loz5", "0");
     client.publish("wenfan", "0");
     
-    sendBrodcast("loz", "5", String("0"), String(""), String(""));
-    sendBrodcast("wen", "fan", String("0"), String(""), String(""));
+    terminal("sendBrodcast;loz;5;0");
+    terminal("sendBrodcast;wen;fan;0");
 
     c5 = 0;
     digitalWrite(SUPPLY_12_PIN, HIGH);
@@ -292,10 +298,9 @@ void loop()
   !buttons[0][1] && !buttons[2][1] && !buttons[3][1] && !buttons[4][1])
   {
     FastLED.show();
-    sendBrodcast("loz", "shw", String(""), String(""), String(""));
-
+    terminal("sendBrodcast;loz;shw;0");
     terminal("bout;7;#00FF00");
-    DCEAdd(1000, "bout;7;#000000", 1, "", "", "", "", "");
+    DCEAdd(1000, "bout;7;#000000", 1);
   }
   
   //Power on
@@ -310,7 +315,7 @@ void loop()
         break;
       case 1:
         client.publish("loz5", "1");
-        sendBrodcast("loz", "5", String("on"), String(""), String(""));
+        terminal("sendBrodcast;loz;5;1");
         break;
         
       case 2:
@@ -324,11 +329,11 @@ void loop()
         digitalWrite(SUPPLY_5_PIN, LOW);
         
         client.publish("loz5", "1");
-        sendBrodcast("loz", "5", String("on"), String(""), String(""));
+        terminal("sendBrodcast;loz;5;1");
   
         delay(1000);
         FastLED.show();
-        sendBrodcast("loz", "shw", String(""), String(""), String(""));
+        terminal("sendBrodcast;loz;shw");
         break;
     }
   }
@@ -346,7 +351,7 @@ void loop()
         
       case 1:
         client.publish("loz5", "0");
-        sendBrodcast("loz", "5", String("off"), String(""), String(""));
+        terminal("sendBrodcast;loz;5;0");
         break;
         
       case 2:
@@ -360,11 +365,11 @@ void loop()
         digitalWrite(SUPPLY_5_PIN, LOW);
         
         client.publish("loz5", "1");
-        sendBrodcast("loz", "5", String("on"), String(""), String(""));
-  
+        terminal("sendBrodcast;loz;5;1");
+        
         delay(1000);
         FastLED.show();
-        sendBrodcast("loz", "shw", String(""), String(""), String(""));
+        terminal("sendBrodcast;loz;shw");
         break;
         
       case 4:
@@ -372,7 +377,7 @@ void loop()
         digitalWrite(SUPPLY_5_PIN, HIGH);
         
         client.publish("loz5", "0");
-        sendBrodcast("loz", "5", String("off"), String(""), String(""));
+        terminal("sendBrodcast;loz;5;0");
         break;
     }
   }
@@ -440,20 +445,8 @@ void mqttReconnect()
   if (client.connect(clientId.c_str(), MQTT_USER, MQTT_PASSWORD))
   {
     //Subscribe list
-    client.subscribe("cen5");
-    client.subscribe("cen12");
-    client.subscribe("cencwip");
-    client.subscribe("cenanim");
-    client.subscribe("cenbotim");
-    client.subscribe("valve");
+    client.subscribe("#");
   }
-}
-
-void sendBrodcast(char* adr, char* cmd, String a, String b, String c)
-{
-  char toSend[40];
-  snprintf(toSend, 40, "%s%s;%s;%s;%s;", adr, cmd, a, b, c);
-  udp.broadcastTo(toSend, 54091);
 }
 
 void buttonsHandle()
@@ -511,18 +504,9 @@ void DCEHandle()
   {
     if(millis() >= DCETimers[i][0] && DCELoop[i] != 0)
     {
-      //Execute command and optional brodcast
-      terminal(DCECommand[i][0]);
-      if(DCECommand[i][1] != "")
-      {
-        char adrArray[10];
-        char cmdArray[10];
-        DCECommand[i][1].toCharArray(adrArray, 10);
-        DCECommand[i][2].toCharArray(cmdArray, 10);
-        
-        sendBrodcast(adrArray, cmdArray, DCECommand[i][3], DCECommand[i][4], DCECommand[i][5]);
-      }
-      
+      //Execute command
+      terminal(DCECommand[i]);
+
       if(DCELoop[i] == -1) // Infinite, extend
       {
         DCETimers[i][0] = millis() + DCETimers[i][1];
@@ -540,7 +524,7 @@ void DCEHandle()
   }
 }
 
-void DCEAdd(long timer, String command, int loops, char* adr, char* cmd, char* a, char* b, char* c)
+void DCEAdd(long timer, String command, int loops)
 {
   for(int i=0; i<MAX_DCE_TIMERS; i++)
   {
@@ -550,34 +534,20 @@ void DCEAdd(long timer, String command, int loops, char* adr, char* cmd, char* a
       DCETimers[i][0] = timer + millis();
       DCETimers[i][1] = timer;
       DCELoop[i] = loops;
-      DCECommand[i][0] = command;
-
-      if(adr != "")
-      {
-        //Brodcast
-        DCECommand[i][1] = String(adr);
-        DCECommand[i][2] = String(cmd);
-        DCECommand[i][3] = String(a);
-        DCECommand[i][4] = String(b);
-        DCECommand[i][5] = String(c);
-      }
-      else
-      {
-        DCECommand[i][1] = DCECommand[i][2] = DCECommand[i][3] = DCECommand[i][4] = DCECommand[i][5] = "";
-      }
+      DCECommand[i] = command;
 
       return;
     }
   }
 }
 
-bool DCEEdit(long timer, String command, int loops, char* adr, char* cmd, char* a, char* b, char* c)
+bool DCEEdit(long timer, String command, int loops)
 {
   bool edited = 0;
   
   for(int i=0; i<MAX_DCE_TIMERS; i++)
   {
-    if(DCECommand[i][0] == command || DCELoop[i] != 0) //Look for desired command and edit
+    if(DCECommand[i] == command || DCELoop[i] != 0) //Look for desired command and edit
     {
       edited = 1;
       
@@ -592,18 +562,8 @@ bool DCEEdit(long timer, String command, int loops, char* adr, char* cmd, char* 
         DCETimers[i][0] = 0;
       }
       
-      DCECommand[i][0] = command;
+      DCECommand[i] = command;
       DCELoop[i] = loops;
-
-      if(adr != "")
-      {
-        //Brodcast
-        DCECommand[i][1] = String(adr);
-        DCECommand[i][2] = String(cmd);
-        DCECommand[i][3] = String(a);
-        DCECommand[i][4] = String(b);
-        DCECommand[i][5] = String(c);
-      }
     }
   }
 
@@ -809,21 +769,34 @@ String decToHex(byte decValue, byte desiredStringLength) {
 }
 
 //-------------------------------------------------------------------------------- Callbacks
-
 void mqttCallback(char* topic, byte* payload, unsigned int length)
 {
-  String cmd = String(topic).substring(3) + ';';
-
-  for (int i = 0; i < length; i++)
+  if(String(topic) == "terminal") //Terminal input
   {
-    cmd += (char)payload[i];
+    String payloadS;
+    for (int i = 0; i < length; i++)
+    {
+      payloadS += (char)payload[i];
+    }
+
+    if(payloadS.substring(0,3) == "cen") //Check address
+    {
+      String cmd = String(topic).substring(3);
+      terminal(cmd);
+    }
   }
-
-  cmd += ";;;";
-
-  terminal(cmd);
+  else if(String(topic).substring(0,3) == "glb" || String(topic).substring(0,3) == "cen") ////Check address, standard input
+  {
+    String cmd = String(topic).substring(3) + ';';
+    
+    for (int i = 0; i < length; i++)
+    {
+      cmd += (char)payload[i];
+    }
+  
+    terminal(cmd);
+  }
 }
-
 
 void terminal(String command)
 {
@@ -925,7 +898,7 @@ void terminal(String command)
     FastLED.show();
   }
   //--------------------------------------------------------------------------------
-  else if(cmd[0] == "rst")
+  else if(cmd[0] == "reset")
   {
     ESP.restart();
   }
@@ -967,14 +940,16 @@ void terminal(String command)
     if(cmd[1].toInt() == 0)
     {
       //Turn off
-      DCEEdit(0, "black", 0, "", "", "", "", "");
+      DCEEdit(0, "black", 0);
     }
     else
     {
       long timer = cmd[1].toInt() * 60 * 1000; //Minutes to milliseconds
-      DCEAdd(timer, "black", 1, "wen", "fan", "0", "", "");
-      DCEAdd(timer, "black", 1, "loz", "5", "0", "", "");
-      DCEAdd(timer, "black", 1, "loz", "anim", "0", "", "");
+
+      DCEAdd(timer, "black", 1);
+      DCEAdd(timer, "sendBrodcast;wen;fan;0", 1);
+      DCEAdd(timer, "sendBrodcast;loz;5;0", 1);
+      DCEAdd(timer, "sendBrodcast;loz;anim;0", 1);
     }
   }
   else if(cmd[0] == "black")
@@ -992,8 +967,8 @@ void terminal(String command)
     float temp = bme.readTemperature();
     int humi = bme.readHumidity();
     int pres = bme.readPressure() / 100.0F;
-  
-    sendBrodcast("glb", "air", String(temp), String(humi), String(pres));
+    
+    terminal("sendBrodcast;glb;air;" + String(temp) + ';' + String(humi) + ';' + String(humi) + ';' + String(pres));
     
     String(temp).toCharArray(charArray, 8);
     client.publish("temp", charArray);
@@ -1020,5 +995,22 @@ void terminal(String command)
     }
     
     FastLED.show();
+  }
+  else if(cmd[0] == "sendBrodcast") //address, command, A, B, C...
+  {
+    String toSend;
+    toSend += cmd[1] + cmd[2]; //Address and command
+    
+    //Parameters
+    int i = 3;
+    if(cmd[i] != "")
+    {
+      toSend += ';';
+      toSend += cmd[i];
+    }
+
+    char toSendA[40];
+    toSend.toCharArray(toSendA, 40);
+    udp.broadcastTo(toSendA, UDP_PORT);
   }
 }

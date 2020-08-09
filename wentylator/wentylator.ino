@@ -1,6 +1,10 @@
+//-------------------------------------------------------------------------------- Variables
 #define FIRST_PIN 18 //19
 #define SECOND_PIN 18
 #define THIRD_PIN 21
+
+#define MAX_DCE_TIMERS 20
+#define ADDRESS "wen"
 
 #define WIFI_RECON_FREQ 30000
 #define MQTT_RECON_FREQ 30000
@@ -15,6 +19,15 @@ const char* MQTT_SERVER = "192.168.0.125";
 const char* ssid = "Wi-Fi 2.4GHz";
 const char* password = "ceF78*Tay90!hiQ13@";
 
+//UDP
+#define UDP_PORT 54091
+
+//Delayed command execution
+long DCETimers[MAX_DCE_TIMERS][2]; //When, distance
+int DCELoop[MAX_DCE_TIMERS]; //-1 == retain, >0 == loop
+String DCECommand[MAX_DCE_TIMERS]; //Command
+
+//-------------------------------------------------------------------------------- Libraries
 //UDP
 #include "WiFi.h"
 #include "AsyncUDP.h"
@@ -32,23 +45,24 @@ AsyncUDP udp;
 #include <PubSubClient.h>
 #include <ESP32Ping.h>
 
+//-------------------------------------------------------------------------------- Clients
 WiFiClient wifiClient;
 PubSubClient client(wifiClient);
 
-//Status
+//-------------------------------------------------------------------------------- Status
 long wifiReconAlarm;
 long mqttReconAlarm;
-
 byte gear;
+
 void setup()
 {
   Serial.begin(115200);
-  
+
   pinMode(FIRST_PIN, OUTPUT);
   //pinMode(SECOND_PIN, OUTPUT);
   //pinMode(THIRD_PIN, OUTPUT);
 
-  setGear(0);
+  terminal("fan;0");
 
   //MQTT
   client.setServer(MQTT_SERVER, MQTT_PORT);
@@ -97,26 +111,29 @@ void setup()
     ESP.restart();
   });
 
-  if (udp.listen(54091))
+  if (udp.listen(UDP_PORT))
   {
     udp.onPacket([](AsyncUDPPacket packet)
     {
       String adr = "";
-      adr += (char)packet.data()[0];
-      adr += (char)packet.data()[1];
-      adr += (char)packet.data()[2];
-
-      if (adr == "wen" || adr == "glb")
+      for (int i = 0; i < packet.length(); i++)
+      {
+        adr += (char)packet.data()[i];
+        if((char)packet.data()[i+1] == ';')
+        {
+          break;
+        }
+      }
+  
+      if (adr == ADDRESS || adr == "glb")
       {
         String cmd = "";
-        for (int i = 3; i < packet.length(); i++)
+        for (int i = 4; i < packet.length(); i++)
         {
           cmd += (char)packet.data()[i];
         }
         terminal(cmd);
       }
-
-      //packet.printf("Got %u bytes of data", packet.length());
     });
   }
 
@@ -166,51 +183,110 @@ void mqttReconnect()
   if (client.connect(clientId.c_str(), MQTT_USER, MQTT_PASSWORD))
   {
     //Subscribe list
-    client.subscribe("wenfan");
+    client.subscribe("#");
   }
 }
 
-void setGear(int t)
+void DCEHandle()
 {
-  switch (t)
+  for(int i=0; i<MAX_DCE_TIMERS; i++)
   {
-    case 0:
-      digitalWrite(FIRST_PIN, HIGH);
-      gear = 0;
-      break;
+    if(millis() >= DCETimers[i][0] && DCELoop[i] != 0)
+    {
+      //Execute command
+      terminal(DCECommand[i]);
 
-    case 1:
-      setGear(0);
-      digitalWrite(FIRST_PIN, LOW);
-      gear = 1;
-      break;
-
-    case -1:
-      if (gear)
+      if(DCELoop[i] == -1) // Infinite, extend
       {
-        setGear(0);
+        DCETimers[i][0] = millis() + DCETimers[i][1];
       }
-      else
+      else if(DCELoop[i] > 1) //X times, extend, decrease
       {
-        setGear(1);
+        DCETimers[i][0] = millis() + DCETimers[i][1];
+        DCELoop[i] -= 1;
       }
-      break;
+      else if(DCELoop[i] == 1) //Close DCE, its last iteration
+      {
+        DCELoop[i] = 0;
+      }
+    }
   }
 }
 
+void DCEAdd(long timer, String command, int loops)
+{
+  for(int i=0; i<MAX_DCE_TIMERS; i++)
+  {
+    if(DCELoop[i] == 0) //Look for first empty
+    {
+      //Command
+      DCETimers[i][0] = timer + millis();
+      DCETimers[i][1] = timer;
+      DCELoop[i] = loops;
+      DCECommand[i] = command;
+
+      return;
+    }
+  }
+}
+
+bool DCEEdit(long timer, String command, int loops)
+{
+  bool edited = 0;
+  
+  for(int i=0; i<MAX_DCE_TIMERS; i++)
+  {
+    if(DCECommand[i] == command || DCELoop[i] != 0) //Look for desired command and edit
+    {
+      edited = 1;
+      
+      //Command
+      if(timer > 0)
+      {
+        DCETimers[i][0] = timer + millis();
+        DCETimers[i][1] = timer;
+      }
+      else if(timer == 0)
+      {  
+        DCETimers[i][0] = 0;
+      }
+      
+      DCECommand[i] = command;
+      DCELoop[i] = loops;
+    }
+  }
+
+  return edited;
+}
+
+//-------------------------------------------------------------------------------- Callbacks
 void mqttCallback(char* topic, byte* payload, unsigned int length)
 {
-  String cmd = String(topic).substring(3) + ';';
-
-  for (int i = 0; i < length; i++)
+  if(String(topic) == "terminal") //Terminal input
   {
-    cmd += (char)payload[i];
+    String payloadS;
+    for (int i = 0; i < length; i++)
+    {
+      payloadS += (char)payload[i];
+    }
+
+    if(payloadS.substring(0,3) == "cen") //Check address
+    {
+      String cmd = String(topic).substring(3);
+      terminal(cmd);
+    }
   }
-
-  cmd += ";;;";
-
-  terminal(cmd);
-  Serial.println(cmd);
+  else if(String(topic).substring(0,3) == "glb" || String(topic).substring(0,3) == "cen") ////Check address, standard input
+  {
+    String cmd = String(topic).substring(3) + ';';
+    
+    for (int i = 0; i < length; i++)
+    {
+      cmd += (char)payload[i];
+    }
+  
+    terminal(cmd);
+  }
 }
 
 void terminal(String command)
@@ -224,7 +300,7 @@ void terminal(String command)
   int parm = 0;
   for (int i = 0; i < 40; i++)
   {
-    if(cmdChar[i] == ';')
+    if (cmdChar[i] == ';')
     {
       parm++;
     }
@@ -236,10 +312,50 @@ void terminal(String command)
 
   if (cmd[0] == "fan")
   {
-    setGear(cmd[1].toInt());
+    switch (cmd[1].toInt())
+    {
+      case 0:
+        digitalWrite(FIRST_PIN, HIGH);
+        gear = 0;
+        break;
+
+      case 1:
+        terminal("fan;0");
+        digitalWrite(FIRST_PIN, LOW);
+        gear = 1;
+        break;
+
+      case -1:
+        if (gear)
+        {
+          terminal("fan;0");
+        }
+        else
+        {
+          terminal("fan;1");
+        }
+        break;
+    }
   }
-  else if (cmd[0] == "rst")
+  else if (cmd[0] == "reset")
   {
     ESP.restart();
+  }
+  else if(cmd[0] == "sendBrodcast") //address, command, A, B, C...
+  {
+    String toSend;
+    toSend += cmd[1] + cmd[2]; //Address and command
+    
+    //Parameters
+    int i = 3;
+    if(cmd[i] != "")
+    {
+      toSend += ';';
+      toSend += cmd[i];
+    }
+
+    char toSendA[40];
+    toSend.toCharArray(toSendA, 40);
+    udp.broadcastTo(toSendA, UDP_PORT);
   }
 }
