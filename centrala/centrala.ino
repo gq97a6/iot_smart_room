@@ -81,28 +81,31 @@ PubSubClient client(wifiClient);
 //-------------------------------------------------------------------------------- Status
 
 //History off buttons state up to 10 changes
-long buttonsHistoryTimestamp[5][10] = 
-  {{0,0,0,0,0,0,0,0,0,0},
-  {0,0,0,0,0,0,0,0,0,0},
-  {0,0,0,0,0,0,0,0,0,0},
-  {0,0,0,0,0,0,0,0,0,0},
-  {0,0,0,0,0,0,0,0,0,0}};
-  
+long buttonsHistoryTimestamp[5][10] =
+{ {0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+  {0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+  {0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+  {0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+  {0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
+};
+
 bool buttonsHistoryState[5][10] =
-  {{0,0,0,0,0,0,0,0,0,0},
-  {0,0,0,0,0,0,0,0,0,0},
-  {0,0,0,0,0,0,0,0,0,0},
-  {0,0,0,0,0,0,0,0,0,0},
-  {0,0,0,0,0,0,0,0,0,0}};
+{ {0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+  {0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+  {0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+  {0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+  {0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
+};
 
 int buttons[5][4] =
-  {{27, 0, 0, 0},
+{ {27, 0, 0, 0},
   {26, 0, 0, 0},
   {25, 0, 0, 0},
   {33, 0, 0, 0},
-  {32, 0, 0, 0}};
-  //Pin, state, ascending, descending
-  
+  {32, 0, 0, 0}
+};
+//Pin, state, ascending, descending
+
 char charArray[8];
 uint8_t gHue;
 long wifiReconAlarm;
@@ -115,16 +118,16 @@ bool topBar;
 byte potenPos;
 bool valve;
 String queryS;
-    
+
 void setup()
 {
   Serial.begin(115200);
-  
-  for(int i=0; i<=4; i++)
+
+  for (int i = 0; i <= 4; i++)
   {
     pinMode(buttons[i][0], INPUT_PULLUP);
   }
-  
+
   pinMode(POTEN_PIN, INPUT); //Poten
   pinMode(SUPPLY_5_PIN, OUTPUT); //5VDC supply
   pinMode(SUPPLY_12_PIN, OUTPUT); //12VDC supply
@@ -132,10 +135,10 @@ void setup()
   //Power supply
   digitalWrite(SUPPLY_5_PIN, HIGH);
   digitalWrite(SUPPLY_12_PIN, HIGH);
-  
-  FastLED.addLeds<WS2812B, STRIP_PIN_L, GRB>(stripL, STRIP_LEN_L).setCorrection(CRGB(255,255,255));
-  FastLED.addLeds<WS2812B, STRIP_PIN_P, GRB>(stripP, STRIP_LEN_P).setCorrection(CRGB(255,255,255));
-  FastLED.addLeds<WS2812B, STRIP_PIN_I, GRB>(stripI, 3).setCorrection(CRGB(255,179,166));
+
+  FastLED.addLeds<WS2812B, STRIP_PIN_L, GRB>(stripL, STRIP_LEN_L).setCorrection(CRGB(255, 255, 255));
+  FastLED.addLeds<WS2812B, STRIP_PIN_P, GRB>(stripP, STRIP_LEN_P).setCorrection(CRGB(255, 255, 255));
+  FastLED.addLeds<WS2812B, STRIP_PIN_I, GRB>(stripI, 3).setCorrection(CRGB(255, 179, 166));
   FastLED.setBrightness(255);
 
   //MQTT
@@ -190,7 +193,7 @@ void setup()
       for (int i = 0; i < packet.length(); i++)
       {
         adr += (char)packet.data()[i];
-        if((char)packet.data()[i+1] == ';')
+        if ((char)packet.data()[i + 1] == ';')
         {
           break;
         }
@@ -224,12 +227,12 @@ void loop()
   buttonsHandle();
   potenHandle();
   DCEHandle();
-  
+
   //Top bar control
-  if(buttons[3][2] && 
-  !buttons[0][1] && !buttons[1][1] && !buttons[2][1] && !buttons[4][1])
+  if (buttons[3][2] &&
+      !buttons[0][1] && !buttons[1][1] && !buttons[2][1] && !buttons[4][1])
   {
-    if(topBar)
+    if (topBar)
     {
       topBar = 0;
       c12 = 0;
@@ -244,24 +247,24 @@ void loop()
   }
 
   //Fan control //0(gear 0) 1-160(gear 1) 161-175(X) 176-335(gear 2) 336-350(X) 351-511(gear 3)
-  if(buttons[2][2] && 
-  !buttons[0][1] && !buttons[1][1] && !buttons[3][1] && !buttons[4][1])
+  if (buttons[2][2] &&
+      !buttons[0][1] && !buttons[1][1] && !buttons[3][1] && !buttons[4][1])
   {
     terminal("sendBrodcast;wen;fan;-1");
   }
-  
+
   //Heating control
-  if(buttons[0][2] && 
-  !buttons[1][1] && !buttons[2][1] && !buttons[3][1] && !buttons[4][1])
+  if (buttons[0][2] &&
+      !buttons[1][1] && !buttons[2][1] && !buttons[3][1] && !buttons[4][1])
   {
-    switch(potenPos)
+    switch (potenPos)
     {
       case 0:
         terminal("sendBrodcast;loz;heat;0");
         terminal("bout;1;#0000FF");
         DCEAdd(1000, "bout;7;#000000", 1);
         break;
-        
+
       case 2:
         terminal("sendBrodcast;loz;heat;1");
         terminal("bout;2;#FF0000");
@@ -277,37 +280,37 @@ void loop()
   }
 
   //Blackout
-  if(millis() - buttonsHistoryTimestamp[4][0] > 1000 && buttonsHistoryState[4][0] && 
-  !buttons[0][1] && !buttons[1][1] && !buttons[2][1] && !buttons[3][1])
+  if (millis() - buttonsHistoryTimestamp[4][0] > 1000 && buttonsHistoryState[4][0] &&
+      !buttons[0][1] && !buttons[1][1] && !buttons[2][1] && !buttons[3][1])
   {
     client.publish("loz5", "0");
     client.publish("wenfan", "0");
-    
+
     terminal("sendBrodcast;loz;5;0");
     terminal("sendBrodcast;wen;fan;0");
 
     c5 = 0;
     digitalWrite(SUPPLY_12_PIN, HIGH);
-      
+
     topBar = 0;
     c12 = 0;
     digitalWrite(SUPPLY_5_PIN, HIGH);
   }
 
-  if(buttons[1][2] && 
-  !buttons[0][1] && !buttons[2][1] && !buttons[3][1] && !buttons[4][1])
+  if (buttons[1][2] &&
+      !buttons[0][1] && !buttons[2][1] && !buttons[3][1] && !buttons[4][1])
   {
     FastLED.show();
     terminal("sendBrodcast;loz;shw;0");
     terminal("bout;7;#00FF00");
     DCEAdd(1000, "bout;7;#000000", 1);
   }
-  
+
   //Power on
-  if(abs(millis() - buttonsHistoryTimestamp[4][1] - 750) <= 500 && buttonsHistoryState[4][1] && buttons[4][3] &&
-  !buttons[0][1] && !buttons[1][1] && !buttons[2][1] && !buttons[3][1])
+  if (abs(millis() - buttonsHistoryTimestamp[4][1] - 750) <= 500 && buttonsHistoryState[4][1] && buttons[4][3] &&
+      !buttons[0][1] && !buttons[1][1] && !buttons[2][1] && !buttons[3][1])
   {
-    switch(potenPos)
+    switch (potenPos)
     {
       case 0:
         c5 = 1;
@@ -317,20 +320,20 @@ void loop()
         client.publish("loz5", "1");
         terminal("sendBrodcast;loz;5;1");
         break;
-        
+
       case 2:
         topBar = 1;
         c12 = 1;
         digitalWrite(SUPPLY_12_PIN, LOW);
         break;
-        
+
       case 3:
         c5 = 1;
         digitalWrite(SUPPLY_5_PIN, LOW);
-        
+
         client.publish("loz5", "1");
         terminal("sendBrodcast;loz;5;1");
-  
+
         delay(1000);
         FastLED.show();
         terminal("sendBrodcast;loz;shw");
@@ -339,51 +342,51 @@ void loop()
   }
 
   //Power off
-  if(abs(millis() - buttonsHistoryTimestamp[4][1] - 200) <= 200 && buttonsHistoryState[4][1] && buttons[4][3] &&
-  !buttons[0][1] && !buttons[1][1] && !buttons[2][1] && !buttons[3][1])
+  if (abs(millis() - buttonsHistoryTimestamp[4][1] - 200) <= 200 && buttonsHistoryState[4][1] && buttons[4][3] &&
+      !buttons[0][1] && !buttons[1][1] && !buttons[2][1] && !buttons[3][1])
   {
-    switch(potenPos)
+    switch (potenPos)
     {
       case 0:
         c5 = 0;
         digitalWrite(SUPPLY_5_PIN, HIGH);
         break;
-        
+
       case 1:
         client.publish("loz5", "0");
         terminal("sendBrodcast;loz;5;0");
         break;
-        
+
       case 2:
         topBar = 0;
         c12 = 0;
         digitalWrite(SUPPLY_12_PIN, HIGH);
         break;
-        
+
       case 3:
         c5 = 1;
         digitalWrite(SUPPLY_5_PIN, LOW);
-        
+
         client.publish("loz5", "1");
         terminal("sendBrodcast;loz;5;1");
-        
+
         delay(1000);
         FastLED.show();
         terminal("sendBrodcast;loz;shw");
         break;
-        
+
       case 4:
         c5 = 0;
         digitalWrite(SUPPLY_5_PIN, HIGH);
-        
+
         client.publish("loz5", "0");
         terminal("sendBrodcast;loz;5;0");
         break;
     }
   }
-  
+
   //Restart
-  if(analogRead(POTEN_PIN) == 0 && buttons[0][1] && buttons[1][1] && buttons[2][1] && buttons[3][1] && buttons[4][1])
+  if (analogRead(POTEN_PIN) == 0 && buttons[0][1] && buttons[1][1] && buttons[2][1] && buttons[3][1] && buttons[4][1])
   {
     terminal("reset");
   }
@@ -404,11 +407,11 @@ void loop()
 
 void conErrorHandle()
 {
-  if(WiFi.status() == WL_CONNECTED)
+  if (WiFi.status() == WL_CONNECTED)
   {
     ArduinoOTA.handle();
-    
-    if(!client.loop()) //No connection with MQTT server
+
+    if (!client.loop()) //No connection with MQTT server
     {
       Serial.println("Disconnected from MQTT server!");
       if (millis() >= mqttReconAlarm)
@@ -455,20 +458,20 @@ void buttonsHandle()
     buttons[i][2] = 0;
     buttons[i][3] = 0;
   }
-  
-  if(buttonCheckAlarm + BUTTON_CHECK > millis())
+
+  if (buttonCheckAlarm + BUTTON_CHECK > millis())
   {
     return;
   }
   buttonCheckAlarm = millis();
-  
+
   for (int i = 0; i < 5; i++)
   {
-    if(buttonsHistoryTimestamp[i][0] + BUTTON_SLEEP > millis())
+    if (buttonsHistoryTimestamp[i][0] + BUTTON_SLEEP > millis())
     {
       continue;
     }
-    
+
     bool state = !digitalRead(buttons[i][0]);
     if (buttons[i][1] != state)
     {
@@ -482,12 +485,12 @@ void buttonsHandle()
       }
 
       //Shift array
-      for(int ii = 9; ii>0; ii--)
+      for (int ii = 9; ii > 0; ii--)
       {
-        buttonsHistoryTimestamp[i][ii] = buttonsHistoryTimestamp[i][ii-1];
-        buttonsHistoryState[i][ii] = buttonsHistoryState[i][ii-1];
+        buttonsHistoryTimestamp[i][ii] = buttonsHistoryTimestamp[i][ii - 1];
+        buttonsHistoryState[i][ii] = buttonsHistoryState[i][ii - 1];
       }
-  
+
       buttonsHistoryTimestamp[i][0] = millis();
       buttonsHistoryState[i][0] = state;
     }
@@ -498,23 +501,23 @@ void buttonsHandle()
 
 void DCEHandle()
 {
-  for(int i=0; i<MAX_DCE_TIMERS; i++)
+  for (int i = 0; i < MAX_DCE_TIMERS; i++)
   {
-    if(millis() >= DCETimers[i][0] && DCELoop[i] != 0)
+    if (millis() >= DCETimers[i][0] && DCELoop[i] != 0)
     {
       //Execute command
       terminal(DCECommand[i]);
 
-      if(DCELoop[i] == -1) // Infinite, extend
+      if (DCELoop[i] == -1) // Infinite, extend
       {
         DCETimers[i][0] = millis() + DCETimers[i][1];
       }
-      else if(DCELoop[i] > 1) //X times, extend, decrease
+      else if (DCELoop[i] > 1) //X times, extend, decrease
       {
         DCETimers[i][0] = millis() + DCETimers[i][1];
         DCELoop[i] -= 1;
       }
-      else if(DCELoop[i] == 1) //Close DCE, its last iteration
+      else if (DCELoop[i] == 1) //Close DCE, its last iteration
       {
         DCELoop[i] = 0;
       }
@@ -524,9 +527,9 @@ void DCEHandle()
 
 void DCEAdd(long timer, String command, int loops)
 {
-  for(int i=0; i<MAX_DCE_TIMERS; i++)
+  for (int i = 0; i < MAX_DCE_TIMERS; i++)
   {
-    if(DCELoop[i] == 0) //Look for first empty
+    if (DCELoop[i] == 0) //Look for first empty
     {
       //Command
       DCETimers[i][0] = timer + millis();
@@ -542,24 +545,24 @@ void DCEAdd(long timer, String command, int loops)
 bool DCEEdit(long timer, String command, int loops)
 {
   bool edited = 0;
-  
-  for(int i=0; i<MAX_DCE_TIMERS; i++)
+
+  for (int i = 0; i < MAX_DCE_TIMERS; i++)
   {
-    if(DCECommand[i] == command || DCELoop[i] != 0) //Look for desired command and edit
+    if (DCECommand[i] == command || DCELoop[i] != 0) //Look for desired command and edit
     {
       edited = 1;
-      
+
       //Command
-      if(timer > 0)
+      if (timer > 0)
       {
         DCETimers[i][0] = timer + millis();
         DCETimers[i][1] = timer;
       }
-      else if(timer == 0)
-      {  
+      else if (timer == 0)
+      {
         DCETimers[i][0] = 0;
       }
-      
+
       DCECommand[i] = command;
       DCELoop[i] = loops;
     }
@@ -572,28 +575,28 @@ byte potenHandle()
 {
   int poten = analogRead(POTEN_PIN);
   potenPos = -1;
-    
-  if(poten == 0)
+
+  if (poten == 0)
   {
     potenPos = 0;
   }
-  else if(poten <= 930)
+  else if (poten <= 930)
   {
     potenPos = 1;
   }
-  else if(poten <= 2350)
+  else if (poten <= 2350)
   {
     potenPos = 2;
   }
-  else if(poten < 4095)
+  else if (poten < 4095)
   {
     potenPos = 3;
   }
-  else if(poten == 4095)
+  else if (poten == 4095)
   {
     potenPos = 4;
   }
-  
+
   return potenPos;
 }
 
@@ -605,7 +608,7 @@ void colorWipe(uint32_t color, int wait, int first, int last)
     stripL[i] = color;
     stripP[i] = color;
     FastLED.show();
-    
+
     delay(wait);
   }
 }
@@ -645,16 +648,16 @@ void Fire2012()
     {
       CRGB color = HeatColor(heat[j]);
 
-      if(j < 78)
+      if (j < 78)
       {
-        stripP[77-j] = color;
+        stripP[77 - j] = color;
       }
       else
       {
-        stripL[j-78] = color;
+        stripL[j - 78] = color;
       }
     }
-    
+
     FastLED.show();
   }
 }
@@ -665,7 +668,7 @@ void rainbow()
   {
     fill_rainbow(stripL, 78, gHue, 7);
     fill_rainbow(stripP, 78, gHue, 7);
-    
+
     FastLED.show();
   }
 }
@@ -679,7 +682,7 @@ void confetti()
     int pos = random16(78);
     stripP[pos] += CHSV( gHue + random8(64), 200, 255);
     stripL[pos] = stripP[pos];
-    
+
     FastLED.show();
   }
 }
@@ -690,11 +693,11 @@ void sinelon()
   {
     fadeToBlackBy( stripP, 78, 20);
     fadeToBlackBy( stripL, 78, 20);
-    
+
     int pos = beatsin16( 13, 0, 78 - 1 );
     stripP[pos] += CHSV( gHue, 255, 192);
     stripL[pos] = stripP[pos];
-    
+
     FastLED.show();
   }
 }
@@ -705,14 +708,14 @@ void bpm()
   {
     uint8_t BeatsPerMinute = 62;
     uint8_t beat = beatsin8( BeatsPerMinute, 64, 255);
-    
+
     CRGBPalette16 palette = PartyColors_p;
     for ( int i = 0; i < 78; i++) //9948
     {
       stripP[i] = ColorFromPalette(palette, gHue + (i * 2), beat - gHue + (i * 10));
       stripL[i] = stripP[i];
     }
-    
+
     FastLED.show();
   }
 }
@@ -743,26 +746,26 @@ unsigned int hexToDec(String hexString)
 {
   unsigned int decValue = 0;
   int nextInt;
-  
+
   for (int i = 0; i < hexString.length(); i++) {
-    
+
     nextInt = int(hexString.charAt(i));
     if (nextInt >= 48 && nextInt <= 57) nextInt = map(nextInt, 48, 57, 0, 9);
     if (nextInt >= 65 && nextInt <= 70) nextInt = map(nextInt, 65, 70, 10, 15);
     if (nextInt >= 97 && nextInt <= 102) nextInt = map(nextInt, 97, 102, 10, 15);
     nextInt = constrain(nextInt, 0, 15);
-    
+
     decValue = (decValue * 16) + nextInt;
   }
-  
+
   return decValue;
 }
 
 String decToHex(byte decValue, byte desiredStringLength) {
-  
+
   String hexString = String(decValue, HEX);
   while (hexString.length() < desiredStringLength) hexString = "0" + hexString;
-  
+
   return hexString;
 }
 
@@ -777,12 +780,12 @@ void mqttCallback(char* topic, byte* payload, unsigned int length)
     for (i = 0; i < length; i++)
     {
       adr += (char)payload[i];
-      if ((char)payload[i+1] == ';')
+      if ((char)payload[i + 1] == ';')
       {
         break;
       }
     }
-    
+
     if (adr == ADDRESS)
     {
       String cmd;
@@ -790,7 +793,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length)
       {
         cmd += (char)payload[j];
       }
-      
+
       terminal(cmd);
     }
   }
@@ -802,21 +805,21 @@ void mqttCallback(char* topic, byte* payload, unsigned int length)
     for (i = 0; i < sizeof(topic); i++)
     {
       adr += topic[i];
-      if (topic[i+1] == ';')
+      if (topic[i + 1] == ';')
       {
         break;
       }
     }
 
-    if(adr == ADDRESS)
+    if (adr == ADDRESS)
     {
-      String cmd = String(topic).substring(i+2) + ';';
-  
+      String cmd = String(topic).substring(i + 2) + ';';
+
       for (int i = 0; i < length; i++)
       {
         cmd += (char)payload[i];
       }
-  
+
       terminal(cmd);
     }
   }
@@ -833,7 +836,7 @@ void terminal(String command)
   int parm = 0;
   for (int i = 0; i < 40; i++)
   {
-    if(cmdChar[i] == ';')
+    if (cmdChar[i] == ';')
     {
       parm++;
     }
@@ -843,20 +846,20 @@ void terminal(String command)
     }
   }
 
-  if(cmd[0] == "cwip")
+  if (cmd[0] == "cwip")
   {
     cmd[1].toUpperCase();
     cmd[1].toCharArray(charArray, 8);
     int colorA = toIntColor(charArray);
 
-    cmd[1] = cmd[1].substring(0,3) + decToHex(hexToDec(cmd[1].substring(3,5)) * 70/100, 2) + decToHex(hexToDec(cmd[1].substring(5)) * 65/100, 2);
+    cmd[1] = cmd[1].substring(0, 3) + decToHex(hexToDec(cmd[1].substring(3, 5)) * 70 / 100, 2) + decToHex(hexToDec(cmd[1].substring(5)) * 65 / 100, 2);
     cmd[1].toUpperCase();
     cmd[1].toCharArray(charArray, 8);
     int colorB = toIntColor(charArray);
-    
+
     for (int i = 0; i < STRIP_LEN_L; i++)
     {
-      if(i<2)
+      if (i < 2)
       {
         stripL[i] = colorA;
       }
@@ -868,7 +871,7 @@ void terminal(String command)
 
     for (int i = 0; i < STRIP_LEN_P; i++)
     {
-      if(i<6)
+      if (i < 6)
       {
         stripP[i] = colorA;
       }
@@ -877,29 +880,29 @@ void terminal(String command)
         stripP[i] = colorB;
       }
     }
-    
-    
+
+
     FastLED.show();
     FastLED.show();
   }
   //-------------------------------------------------------------------------------- Set color of one diode
-  else if(cmd[0] == "setd")
+  else if (cmd[0] == "setd")
   {
     cmd[1].toUpperCase();
     cmd[1].toCharArray(charArray, 8);
     int colorA = toIntColor(charArray);
 
-    cmd[1] = cmd[1].substring(0,3) + decToHex(hexToDec(cmd[1].substring(3,5)) * 70/100, 2) + decToHex(hexToDec(cmd[1].substring(5)) * 65/100, 2);
+    cmd[1] = cmd[1].substring(0, 3) + decToHex(hexToDec(cmd[1].substring(3, 5)) * 70 / 100, 2) + decToHex(hexToDec(cmd[1].substring(5)) * 65 / 100, 2);
     cmd[1].toUpperCase();
     cmd[1].toCharArray(charArray, 8);
     int colorB = toIntColor(charArray);
 
-    if(cmd[2].toInt()<2)
+    if (cmd[2].toInt() < 2)
     {
       stripL[cmd[2].toInt()] = colorA;
       stripP[cmd[2].toInt()] = colorA;
     }
-    else if(cmd[2].toInt()<6)
+    else if (cmd[2].toInt() < 6)
     {
       stripL[cmd[2].toInt()] = colorA;
       stripP[cmd[2].toInt()] = colorB;
@@ -909,10 +912,10 @@ void terminal(String command)
       stripL[cmd[2].toInt()] = colorB;
       stripP[cmd[2].toInt()] = colorB;
     }
-    
+
     FastLED.show();
   }
-  else if(cmd[0] == "infd")
+  else if (cmd[0] == "infd")
   {
     cmd[1].toCharArray(charArray, 8);
     int color = toIntColor(charArray);
@@ -921,48 +924,48 @@ void terminal(String command)
     FastLED.show();
   }
   //--------------------------------------------------------------------------------
-  else if(cmd[0] == "reset")
+  else if (cmd[0] == "reset")
   {
     terminal("bout;7;#FF0000");
     delay(500);
     ESP.restart();
   }
   //--------------------------------------------------------------------------------
-  else if(cmd[0] == "anim")
+  else if (cmd[0] == "anim")
   {
     anim = cmd[1].toInt();
   }
   //-------------------------------------------------------------------------------- 5V power supply
-  else if(cmd[0] == "5")
+  else if (cmd[0] == "5")
   {
-    if(cmd[1] == "1")
+    if (cmd[1] == "1")
     {
       digitalWrite(SUPPLY_5_PIN, LOW);
     }
-    else if(cmd[1] == "0")
+    else if (cmd[1] == "0")
     {
       digitalWrite(SUPPLY_5_PIN, HIGH);
     }
   }
   //-------------------------------------------------------------------------------- 12V power supply
-  else if(cmd[0] == "12")
+  else if (cmd[0] == "12")
   {
-    if(cmd[1] == "1")
+    if (cmd[1] == "1")
     {
       digitalWrite(SUPPLY_12_PIN, LOW);
     }
-    else if(cmd[1] == "0")
+    else if (cmd[1] == "0")
     {
       digitalWrite(SUPPLY_12_PIN, HIGH);
     }
   }
-  else if(cmd[0] == "bip")
+  else if (cmd[0] == "bip")
   {
     ledcWrite(0, cmd[1].toInt());
   }
-  else if(cmd[0] == "botim")
+  else if (cmd[0] == "botim")
   {
-    if(cmd[1].toInt() == 0)
+    if (cmd[1].toInt() == 0)
     {
       //Turn off
       DCEEdit(0, "black", 0);
@@ -977,58 +980,58 @@ void terminal(String command)
       DCEAdd(timer, "sendBrodcast;loz;anim;0", 1);
     }
   }
-  else if(cmd[0] == "black")
+  else if (cmd[0] == "black")
   {
     terminal("12;0;;;");
     terminal("5;0;;;");
     terminal("anim;0;;;");
   }
-  else if(cmd[0] == "vlv")
+  else if (cmd[0] == "vlv")
   {
     valve = cmd[1].toInt();
   }
-  else if(cmd[0] == "upair")
+  else if (cmd[0] == "upair")
   {
     float temp = bme.readTemperature();
     int humi = bme.readHumidity();
     int pres = bme.readPressure() / 100.0F;
-    
+
     terminal("sendBrodcast;glb;air;" + String(temp) + ';' + String(humi) + ';' + String(humi) + ';' + String(pres));
-    
+
     String(temp).toCharArray(charArray, 8);
     client.publish("temp", charArray);
-    
+
     String(humi).toCharArray(charArray, 8);
     client.publish("humi", charArray);
-    
+
     String(pres).toCharArray(charArray, 8);
     client.publish("pres", charArray);
   }
-  else if(cmd[0] == "bout")
+  else if (cmd[0] == "bout")
   {
     cmd[1] = String(cmd[1].toInt(), BIN);
     cmd[2].toCharArray(charArray, 8);
     int color = toIntColor(charArray);
-  
+
     //Read array backward, input colors into array form the front
-    for(int i=cmd[1].length()-1; i>=0; i--)
+    for (int i = cmd[1].length() - 1; i >= 0; i--)
     {
-      if(cmd[1].substring(i, i+1).toInt())
+      if (cmd[1].substring(i, i + 1).toInt())
       {
-        stripI[cmd[1].length()-1-i] = color;
+        stripI[cmd[1].length() - 1 - i] = color;
       }
     }
-    
+
     FastLED.show();
   }
-  else if(cmd[0] == "sendBrodcast") //address, command, A, B, C...
+  else if (cmd[0] == "sendBrodcast") //address, command, A, B, C...
   {
     String toSend;
     toSend += cmd[1] + ';' + cmd[2]; //Address and command
-    
+
     //Parameters
     int i = 3;
-    if(cmd[i] != "")
+    if (cmd[i] != "")
     {
       toSend += ';';
       toSend += cmd[i];
