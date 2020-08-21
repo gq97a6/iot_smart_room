@@ -79,7 +79,6 @@ WiFiClient wifiClient;
 PubSubClient client(wifiClient);
 
 //-------------------------------------------------------------------------------- Status
-
 //History off buttons state up to 10 changes
 long buttonsHistoryTimestamp[5][10] =
 { {0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
@@ -982,9 +981,9 @@ void terminal(String command)
   }
   else if (cmd[0] == "black")
   {
-    terminal("12;0;;;");
-    terminal("5;0;;;");
-    terminal("anim;0;;;");
+    terminal("12;0");
+    terminal("5;0");
+    terminal("anim;0");
   }
   else if (cmd[0] == "vlv")
   {
@@ -992,12 +991,12 @@ void terminal(String command)
   }
   else if (cmd[0] == "upair")
   {
-    float temp = bme.readTemperature();
-    int humi = bme.readHumidity();
-    int pres = bme.readPressure() / 100.0F;
-
-    terminal("sendBrodcast;glb;air;" + String(temp) + ';' + String(humi) + ';' + String(humi) + ';' + String(pres));
-
+    float temp = 17;
+    int humi = 40;
+    int pres = 1000;
+    
+    terminal("sendBrodcast;glb;air;" + String(temp) + ';' + String(humi) + ';' + String(pres));
+    
     String(temp).toCharArray(charArray, 8);
     client.publish("temp", charArray);
 
@@ -1030,15 +1029,18 @@ void terminal(String command)
     toSend += cmd[1] + ';' + cmd[2]; //Address and command
 
     //Parameters
-    int i = 3;
-    if (cmd[i] != "")
+    for(int i = 3; i<40; i++)
     {
-      toSend += ';';
-      toSend += cmd[i];
+      if (cmd[i] != "")
+      {
+        toSend += ';';
+        toSend += cmd[i];
+      }
     }
 
     char toSendA[40];
     toSend.toCharArray(toSendA, 40);
+    Serial.println(toSendA);
     udp.broadcastTo(toSendA, UDP_PORT);
   }
 }

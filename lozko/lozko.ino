@@ -11,7 +11,7 @@
 #define TEMP_RECEIVED_FREQ 20000
 #define HEATUP_FREQ 180000
 #define WIFI_RECON_FREQ 30000
-#define MQTT_RECON_FREQ 30000
+#define MQTT_RECON_FREQ 600000
 
 //After WIFI_REC times, give up reconnecting and restart esp
 #define WIFI_REC 5
@@ -375,7 +375,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length)
       }
     }
     
-    if (adr == ADDRESS)
+    if (adr == ADDRESS || adr == "glb")
     {
       String cmd;
       for (int j = i + 2; j < length; j++)
@@ -540,11 +540,13 @@ void terminal(String command)
     toSend += cmd[1] + cmd[2]; //Address and command
     
     //Parameters
-    int i = 3;
-    if(cmd[i] != "")
+    for(int i = 3; i<40; i++)
     {
-      toSend += ';';
-      toSend += cmd[i];
+      if (cmd[i] != "")
+      {
+        toSend += ';';
+        toSend += cmd[i];
+      }
     }
 
     char toSendA[40];
