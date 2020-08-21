@@ -4,6 +4,8 @@
 #define THIRD_PIN 21
 
 #define MAX_DCE_TIMERS 20
+#define MAXT_CMD 40
+#define MAXT_ELEMENTS 20
 #define ADDRESS "wen"
 
 #define WIFI_RECON_FREQ 30000
@@ -318,21 +320,25 @@ void mqttCallback(char* topic, byte* payload, unsigned int length)
 void terminal(String command)
 {
   //Create arrays
-  String cmd[20];
-  char cmdChar[40];
-  command.toCharArray(cmdChar, 40);
+  String cmd[MAXT_ELEMENTS];
+  char cmdChar[MAXT_CMD];
+  command.toCharArray(cmdChar, MAXT_CMD);
 
   //Slice array into parameters
   int parm = 0;
-  for (int i = 0; i < 40; i++)
+  for (int i = 0; i < MAXT_CMD; i++)
   {
     if (cmdChar[i] == ';')
     {
       parm++;
     }
-    else
+    else if(cmdChar[i] != 0)
     {
       cmd[parm] += cmdChar[i];
+    }
+    else
+    {
+      break;
     }
   }
 
@@ -369,21 +375,24 @@ void terminal(String command)
   }
   else if (cmd[0] == "sendBrodcast") //address, command, A, B, C...
   {
-    String toSend;
-    toSend += cmd[1] + cmd[2]; //Address and command
+    String toSend = cmd[1] + ';' + cmd[2];//Address and command
 
     //Parameters
-    for(int i = 3; i<40; i++)
+    for(int i = 3; i<MAXT_CMD; i++)
     {
       if (cmd[i] != "")
       {
         toSend += ';';
         toSend += cmd[i];
       }
+      else
+      {
+        break;
+      }
     }
 
-    char toSendA[40];
-    toSend.toCharArray(toSendA, 40);
+    char toSendA[MAXT_CMD];
+    toSend.toCharArray(toSendA, MAXT_CMD);
     udp.broadcastTo(toSendA, UDP_PORT);
   }
 }
