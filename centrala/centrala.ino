@@ -275,8 +275,17 @@ void loop()
 
       case 4:
         terminal("sendBrodcast;loz;heat;4");
-        terminal("bout;4;#FF0000");
-        DCEAdd(1000, "bout;7;#000000", 1);
+        
+        if(valve)
+        {
+          terminal("bout;4;#0000FF");
+          DCEAdd(1000, "bout;7;#000000", 1);
+        }
+        else
+        {
+          terminal("bout;4;#FF0000");
+          DCEAdd(1000, "bout;7;#000000", 1);
+        }
         break;
     }
   }
