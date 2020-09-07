@@ -44,15 +44,25 @@ int DCELoop[MAX_DCE_TIMERS]; //-1 == retain, >0 == loop
 String DCECommand[MAX_DCE_TIMERS]; //Command
 
 //-------------------------------------------------------------------------------- Libraries
+//Wifi
+#include <WiFi.h>
+
+//OTA
+#include <ESPmDNS.h>
+#include <WiFiUdp.h>
+#include <ArduinoOTA.h>
+
+//UDP
+#include "AsyncUDP.h"
+
+//MQTT
+#include <PubSubClient.h>
+
 //EEPROM
 #include <Preferences.h>
-Preferences preferences;
 
 //LED strips
 #include <FastLED.h>
-CRGB stripL[STRIP_LEN_L];
-CRGB stripP[STRIP_LEN_P];
-CRGB stripI[3];
 
 //BME280 sensor
 #include <Wire.h>
@@ -61,25 +71,14 @@ CRGB stripI[3];
 #include <Adafruit_BME280.h>
 Adafruit_BME280 bme;
 
-//UDP
-#include "WiFi.h"
-#include "AsyncUDP.h"
-AsyncUDP udp;
-
-//OTA
-#include <WiFi.h>
-#include <ESPmDNS.h>
-#include <WiFiUdp.h>
-#include <ArduinoOTA.h>
-
-//MQTT and WiFI
-#include <SPI.h>
-#include <WiFi.h>
-#include <PubSubClient.h>
-
 //-------------------------------------------------------------------------------- Clients
 WiFiClient wifiClient;
 PubSubClient client(wifiClient);
+AsyncUDP udp;
+CRGB stripL[STRIP_LEN_L];
+CRGB stripP[STRIP_LEN_P];
+CRGB stripI[3];
+Preferences preferences;
 
 //-------------------------------------------------------------------------------- Status
 //History off buttons state up to 10 changes
@@ -783,7 +782,7 @@ String decToHex(byte decValue, byte desiredStringLength) {
 //-------------------------------------------------------------------------------- Callbacks
 void mqttCallback(char* topic, byte* payload, unsigned int length)
 {
-  if (String(topic) == "terminal") //Terminal input
+  if (String(topic) == "terminal") //Terminal input, payload is a command
   {
     //Extract adress
     String adr = "";
@@ -808,7 +807,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length)
       terminal(cmd);
     }
   }
-  else //Standard input
+  else //Standard input, topic is a command, payload is a variable
   {
     //Extract adress
     String adr = "";

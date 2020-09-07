@@ -35,33 +35,32 @@ const char* password = "ceF78*Tay90!hiQ13@";
 #define UDP_PORT 54091
 
 //-------------------------------------------------------------------------------- Libraries
-//EEPROM
-#include <Preferences.h>
-Preferences preferences;
-
-//Strip
-#include <FastLED.h>
-CRGB strip[STRIP_LEN];
-
-//UDP
-#include "WiFi.h"
-#include "AsyncUDP.h"
-AsyncUDP udp;
+//Wifi
+#include <WiFi.h>
 
 //OTA
-#include <WiFi.h>
 #include <ESPmDNS.h>
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
 
-//MQTT and WiFI
-#include <SPI.h>
-#include <WiFi.h>
-#include <PubSubClient.h>
-#include <ESP32Ping.h>
+//UDP
+#include "AsyncUDP.h"
 
+//MQTT
+#include <PubSubClient.h>
+
+//EEPROM
+#include <Preferences.h>
+
+//LED strip
+#include <FastLED.h>
+
+//-------------------------------------------------------------------------------- Clients
 WiFiClient wifiClient;
 PubSubClient client(wifiClient);
+AsyncUDP udp;
+CRGB strip[STRIP_LEN];
+Preferences preferences;
 
 //Status
 char charArray[8];
@@ -365,7 +364,7 @@ void eepromGet()
 
 void mqttCallback(char* topic, byte* payload, unsigned int length)
 {
-  if (String(topic) == "terminal") //Terminal input
+  if (String(topic) == "terminal") //Terminal input, payload is a command
   {
     //Extract adress
     String adr = "";
@@ -390,7 +389,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length)
       terminal(cmd);
     }
   }
-  else //Standard input
+  else //Standard input, topic is a command, payload is a variable
   {
     //Extract adress
     String adr = "";

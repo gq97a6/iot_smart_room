@@ -30,26 +30,24 @@ int DCELoop[MAX_DCE_TIMERS]; //-1 == retain, >0 == loop
 String DCECommand[MAX_DCE_TIMERS]; //Command
 
 //-------------------------------------------------------------------------------- Libraries
-//UDP
-#include "WiFi.h"
-#include "AsyncUDP.h"
-AsyncUDP udp;
+//Wifi
+#include <WiFi.h>
 
 //OTA
-#include <WiFi.h>
 #include <ESPmDNS.h>
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
 
-//MQTT and WiFI
-#include <SPI.h>
-#include <WiFi.h>
+//UDP
+#include "AsyncUDP.h"
+
+//MQTT
 #include <PubSubClient.h>
-#include <ESP32Ping.h>
 
 //-------------------------------------------------------------------------------- Clients
 WiFiClient wifiClient;
 PubSubClient client(wifiClient);
+AsyncUDP udp;
 
 //-------------------------------------------------------------------------------- Status
 long wifiReconAlarm;
@@ -67,18 +65,12 @@ void setup()
   terminal("fan;0");
 
   //MQTT
-  client.setServer(MQTT_SERVER, MQTT_PORT);
-  client.setCallback(mqttCallback);
-
+  //client.setServer(MQTT_SERVER, MQTT_PORT);
+  //client.setCallback(mqttCallback);
+  
   //Wifi and OTA update
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
-
-  delay(1000);
-  if (WiFi.status() != WL_CONNECTED)
-  {
-    Serial.println("notConnected!");
-  }
 
   ArduinoOTA
   .onStart([]()
@@ -145,7 +137,7 @@ void setup()
 void loop()
 {
   conErrorHandle();
-  delay(10);
+  delay(1);
 }
 
 void conErrorHandle()
@@ -154,6 +146,7 @@ void conErrorHandle()
   {
     ArduinoOTA.handle();
 
+    /*
     if (!client.loop()) //No connection with mqtt server
     {
       if (millis() >= mqttReconAlarm)
@@ -162,6 +155,7 @@ void conErrorHandle()
         mqttReconnect();
       }
     }
+    */
   }
   else //No connection with wifi router
   {
@@ -264,7 +258,7 @@ bool DCEEdit(long timer, String command, int loops)
 //-------------------------------------------------------------------------------- Callbacks
 void mqttCallback(char* topic, byte* payload, unsigned int length)
 {
-  if (String(topic) == "terminal") //Terminal input
+  if (String(topic) == "terminal") //Terminal input, payload is a command
   {
     //Extract adress
     String adr = "";
@@ -272,24 +266,24 @@ void mqttCallback(char* topic, byte* payload, unsigned int length)
     for (i = 0; i < length; i++)
     {
       adr += (char)payload[i];
-      if ((char)payload[i+1] == ';')
+      if ((char)payload[i + 1] == ';')
       {
         break;
       }
     }
-    
-    if (adr == ADDRESS || adr == "glb")
+
+    if (adr == ADDRESS)
     {
       String cmd;
       for (int j = i + 2; j < length; j++)
       {
         cmd += (char)payload[j];
       }
-      
+
       terminal(cmd);
     }
   }
-  else //Standard input
+  else //Standard input, topic is a command, payload is a variable
   {
     //Extract adress
     String adr = "";
@@ -297,21 +291,21 @@ void mqttCallback(char* topic, byte* payload, unsigned int length)
     for (i = 0; i < sizeof(topic); i++)
     {
       adr += topic[i];
-      if (topic[i+1] == ';')
+      if (topic[i + 1] == ';')
       {
         break;
       }
     }
 
-    if(adr == ADDRESS)
+    if (adr == ADDRESS)
     {
-      String cmd = String(topic).substring(i+2) + ';';
-  
+      String cmd = String(topic).substring(i + 2) + ';';
+
       for (int i = 0; i < length; i++)
       {
         cmd += (char)payload[i];
       }
-  
+
       terminal(cmd);
     }
   }
@@ -332,7 +326,7 @@ void terminal(String command)
     {
       parm++;
     }
-    else if(cmdChar[i] != 0)
+    else if (cmdChar[i] != 0)
     {
       cmd[parm] += cmdChar[i];
     }
@@ -378,7 +372,7 @@ void terminal(String command)
     String toSend = cmd[1] + ';' + cmd[2];//Address and command
 
     //Parameters
-    for(int i = 3; i<MAXT_CMD; i++)
+    for (int i = 3; i < MAXT_CMD; i++)
     {
       if (cmd[i] != "")
       {
