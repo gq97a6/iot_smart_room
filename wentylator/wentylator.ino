@@ -65,8 +65,8 @@ void setup()
   terminal("fan;0");
 
   //MQTT
-  //client.setServer(MQTT_SERVER, MQTT_PORT);
-  //client.setCallback(mqttCallback);
+  client.setServer(MQTT_SERVER, MQTT_PORT);
+  client.setCallback(mqttCallback);
   
   //Wifi and OTA update
   WiFi.mode(WIFI_STA);
@@ -146,7 +146,7 @@ void conErrorHandle()
   {
     ArduinoOTA.handle();
 
-    /*
+    
     if (!client.loop()) //No connection with mqtt server
     {
       if (millis() >= mqttReconAlarm)
@@ -155,7 +155,7 @@ void conErrorHandle()
         mqttReconnect();
       }
     }
-    */
+    
   }
   else //No connection with wifi router
   {
@@ -258,55 +258,27 @@ bool DCEEdit(long timer, String command, int loops)
 //-------------------------------------------------------------------------------- Callbacks
 void mqttCallback(char* topic, byte* payload, unsigned int length)
 {
+  //Get payload
+  String payloadS;
+  for (int i = 0; i < length; i++)
+  {
+    payloadS += (char)payload[i];
+  }
+      
   if (String(topic) == "terminal") //Terminal input, payload is a command
   {
-    //Extract adress
-    String adr = "";
-    int i;
-    for (i = 0; i < length; i++)
+    String adr = String(payloadS).substring(0, String(payloadS).indexOf(';'));
+    if(adr == ADDRESS || adr == "glb")
     {
-      adr += (char)payload[i];
-      if ((char)payload[i + 1] == ';')
-      {
-        break;
-      }
-    }
-
-    if (adr == ADDRESS)
-    {
-      String cmd;
-      for (int j = i + 2; j < length; j++)
-      {
-        cmd += (char)payload[j];
-      }
-
-      terminal(cmd);
+      terminal(String(payloadS).substring(String(payloadS).indexOf(';') + 1));
     }
   }
   else //Standard input, topic is a command, payload is a variable
   {
-    //Extract adress
-    String adr = "";
-    int i;
-    for (i = 0; i < sizeof(topic); i++)
+    String adr = String(topic).substring(0, String(topic).indexOf(';'));
+    if(adr == ADDRESS || adr == "glb")
     {
-      adr += topic[i];
-      if (topic[i + 1] == ';')
-      {
-        break;
-      }
-    }
-
-    if (adr == ADDRESS)
-    {
-      String cmd = String(topic).substring(i + 2) + ';';
-
-      for (int i = 0; i < length; i++)
-      {
-        cmd += (char)payload[i];
-      }
-
-      terminal(cmd);
+      terminal(String(topic).substring(String(topic).indexOf(';') + 1) + ";" + payloadS);
     }
   }
 }
