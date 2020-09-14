@@ -1,28 +1,10 @@
 //-------------------------------------------------------------------------------- Variables
+#include "constants.h"
+#define ADDRESS "wen"
+
 #define FIRST_PIN 18 //19
 #define SECOND_PIN 18
 #define THIRD_PIN 21
-
-#define MAX_DCE_TIMERS 20
-#define MAXT_CMD 40
-#define MAXT_ELEMENTS 20
-#define ADDRESS "wen"
-
-#define WIFI_RECON_FREQ 30000
-#define MQTT_RECON_FREQ 30000
-
-//MQTT
-#define MQTT_PORT 54090
-#define MQTT_USER "mqtt"
-#define MQTT_PASSWORD "r5Vk!@z&uZBY&W%h"
-const char* MQTT_SERVER = "192.168.0.125";
-
-//Wifi
-const char* ssid = "Wi-Fi 2.4GHz";
-const char* password = "ceF78*Tay90!hiQ13@";
-
-//UDP
-#define UDP_PORT 54091
 
 //Delayed command execution
 long DCETimers[MAX_DCE_TIMERS][2]; //When, distance

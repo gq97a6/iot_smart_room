@@ -1,11 +1,5 @@
 //-------------------------------------------------------------------------------- Variables
-#define FRAMES_PER_SECOND 120
-#define BUTTON_SLEEP 100 //Ignore button after change
-#define BUTTON_CHECK 10 //Check state every
-
-#define MAX_DCE_TIMERS 20
-#define MAXT_CMD 40
-#define MAXT_ELEMENTS 20
+#include "constants.h"
 #define ADDRESS "cen"
 
 #define STRIP_LEN_L 78
@@ -18,25 +12,6 @@
 #define SUPPLY_5_PIN 15
 #define SUPPLY_12_PIN 4
 #define POTEN_PIN 34
-
-//Alarms
-#define UPDATE_FREQ 1500
-#define WIFI_RECON_FREQ 30000
-#define MQTT_RECON_FREQ 30000
-#define MYSQL_RECON_FREQ 30000
-
-//MQTT
-#define MQTT_PORT 54090
-#define MQTT_USER "mqtt"
-#define MQTT_PASSWORD "r5Vk!@z&uZBY&W%h"
-const char* MQTT_SERVER = "192.168.0.125";
-
-//Wifi
-const char* ssid = "Wi-Fi 2.4GHz";
-const char* password = "ceF78*Tay90!hiQ13@";
-
-//UDP
-#define UDP_PORT 54091
 
 //Delayed command execution
 long DCETimers[MAX_DCE_TIMERS][2]; //When, distance
@@ -71,7 +46,7 @@ String DCECommand[MAX_DCE_TIMERS]; //Command
 #include <Adafruit_BME280.h>
 Adafruit_BME280 bme;
 
-//-------------------------------------------------------------------------------- Clients
+//-------------------------------------------------------------------------------- Objects
 WiFiClient wifiClient;
 PubSubClient client(wifiClient);
 AsyncUDP udp;
@@ -752,8 +727,7 @@ int toIntColor(char hexColor[])
   return color;
 }
 
-unsigned int hexToDec(String hexString)
-{
+unsigned int hexToDec(String hexString) {
   unsigned int decValue = 0;
   int nextInt;
 
@@ -985,13 +959,13 @@ void terminal(String command)
     terminal("sendBrodcast;glb;air;" + String(temp) + ';' + String(humi) + ';' + String(pres));
     
     String(temp).toCharArray(charArray, 8);
-    client.publish("temp", charArray);
+    client.publish("glb;temp", charArray);
 
     String(humi).toCharArray(charArray, 8);
-    client.publish("humi", charArray);
+    client.publish("glb;humi", charArray);
 
     String(pres).toCharArray(charArray, 8);
-    client.publish("pres", charArray);
+    client.publish("glb;pres", charArray);
   }
   else if (cmd[0] == "bout")
   {

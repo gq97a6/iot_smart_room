@@ -1,9 +1,5 @@
 //-------------------------------------------------------------------------------- Variables
-//Variables
-#define FRAMES_PER_SECOND 120
-
-#define MAXT_CMD 40
-#define MAXT_ELEMENTS 20
+#include "constants.h"
 #define ADDRESS "loz"
 
 #define STRIP_LEN 101
@@ -14,25 +10,6 @@
 
 #define TEMP_RECEIVED_FREQ 20000
 #define HEATUP_FREQ 180000
-#define WIFI_RECON_FREQ 30000
-#define MQTT_RECON_FREQ 600000
-
-//After WIFI_REC times, give up reconnecting and restart esp
-#define WIFI_REC 5
-#define MQTT_REC 5
-
-//MQTT
-#define MQTT_PORT 54090
-#define MQTT_USER "mqtt"
-#define MQTT_PASSWORD "r5Vk!@z&uZBY&W%h"
-const char* MQTT_SERVER = "192.168.0.125";
-
-//WiFi
-const char* ssid = "Wi-Fi 2.4GHz";
-const char* password = "ceF78*Tay90!hiQ13@";
-
-//UDP
-#define UDP_PORT 54091
 
 //-------------------------------------------------------------------------------- Libraries
 //Wifi
