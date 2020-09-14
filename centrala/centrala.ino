@@ -1,5 +1,5 @@
 //-------------------------------------------------------------------------------- Variables
-#include "constants.h"
+#include <constants.h>
 #define ADDRESS "cen"
 
 #define STRIP_LEN_L 78
