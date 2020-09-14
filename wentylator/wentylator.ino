@@ -1,5 +1,5 @@
 //-------------------------------------------------------------------------------- Variables
-#include "constants.h"
+#include <constants.h>
 #define ADDRESS "wen"
 
 #define FIRST_PIN 18 //19
@@ -267,10 +267,8 @@ void mqttCallback(char* topic, byte* payload, unsigned int length)
 
 void terminal(String command)
 {
-  //Create arrays
-  String cmd[MAXT_ELEMENTS];
-  char cmdChar[MAXT_CMD];
-  command.toCharArray(cmdChar, MAXT_CMD);
+    String cmd[MAXT_ELEMENTS];
+    terminalSlice(command, cmd);
 
   //Slice array into parameters
   int parm = 0;

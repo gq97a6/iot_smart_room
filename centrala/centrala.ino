@@ -783,29 +783,9 @@ void mqttCallback(char* topic, byte* payload, unsigned int length)
 
 void terminal(String command)
 {
-  //Create arrays
   String cmd[MAXT_ELEMENTS];
-  char cmdChar[MAXT_CMD];
-  command.toCharArray(cmdChar, MAXT_CMD);
-
-  //Slice array into parameters
-  int parm = 0;
-  for (int i = 0; i < MAXT_CMD; i++)
-  {
-    if (cmdChar[i] == ';')
-    {
-      parm++;
-    }
-    else if(cmdChar[i] != 0)
-    {
-      cmd[parm] += cmdChar[i];
-    }
-    else
-    {
-      break;
-    }
-  }
-
+  terminalSlice(command, cmd);
+  
   if (cmd[0] == "cwip")
   {
     cmd[1].toUpperCase();
