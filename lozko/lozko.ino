@@ -369,128 +369,143 @@ void mqttCallback(char* topic, byte* payload, unsigned int length)
 
 void terminal(String command)
 {
-    String cmd[MAXT_ELEMENTS];
-    terminalSlice(command, cmd);
-
-    if(cmd[0] == "air") //Temperature, humidity, pressure
-    {
-    if (cmd[1].toFloat() > 0 && cmd[1].toFloat() < 40) //Validate
-    {
-        tempReceivedAlarm = millis() + TEMP_RECEIVED_FREQ; //Update temperature reset alarm
-        temperature = cmd[1].toFloat();
-    }
-    else
-    {
-        temperature = 100;
-    }
-    }
-    else if(cmd[0] == "cwip") //Set one color for whole strip
-    {
-    cmd[1].toCharArray(charArray, 8);
-    int color = toIntColor(charArray);
-    
-    for (int i = 0; i < STRIP_LEN; i++)
-    {
-        strip[i] = color;
-    }
-    
-    FastLED.show();
-    }
-    else if(cmd[0] == "shw")
-    {
-    FastLED.show();
-    }
-    else if(cmd[0] == "setd") //Set color of one diode
-    {
-    cmd[1].toCharArray(charArray, 8);
-    strip[cmd[2].toInt()] = toIntColor(charArray);
-    }
-    else if(cmd[0] == "term") //Set termostat
-    {
-    termostat = cmd[1].toFloat();
-    eepromPut();
-    }
-    else if(cmd[0] == "reset")
-    {
-    ESP.restart();
-    }
-    else if(cmd[0] == "anim")
-    {
-    anim = cmd[1].toInt();
-    }
-    else if(cmd[0] == "5") //5V power supply
-    {
-    if(cmd[1] == "1")
-    {
-        digitalWrite(SUPPLY_PIN, LOW);
-    }
-    else if(cmd[1] == "0")
-    {
-        digitalWrite(SUPPLY_PIN, HIGH);
-    }
-    }
-    else if(cmd[0] == "heat")
-    {
-    switch (cmd[1].toInt())
-    {
-        case 0: //Cold
-        heatMode = 0; terminal("valve;0"); break;
-        
-        case 1: //Heat
-        heatMode = 1; terminal("valve;1"); break;
-        
-        case 4: //Toggle
-        if(heatMode == 0)
-        {
-            terminal("heat;1");
-        }
-        else
-        {
-            terminal("heat;0");
-        }
-        break;
-    }
-    
-    eepromPut();
-    }
-    else if(cmd[0] == "valve")
-    {
-    bool pos = cmd[1].toInt();
-    if (pos && !valveS)
-    {
-        valveS = pos;
-        digitalWrite(VALVE_PIN , LOW);
-        client.publish("valve", "1");
-        terminal("sendBrodcast;glb;vlv;1");
-    }
-    else if (!pos && valveS)
-    {
-        valveS = pos;
-        digitalWrite(VALVE_PIN , HIGH);
-        client.publish("valve", "0");
-        terminal("sendBrodcast;glb;vlv;0");
-    }
-    }
-    else if (cmd[0] == "sendBrodcast") //address, command, A, B, C...
-    {
+  String cmd[MAXT_ELEMENTS];
+  terminalSlice(command, cmd);
+  
+  if(cmd[0] == "air") //Temperature, humidity, pressure
+  {
+  if (cmd[1].toFloat() > 0 && cmd[1].toFloat() < 40) //Validate
+  {
+      tempReceivedAlarm = millis() + TEMP_RECEIVED_FREQ; //Update temperature reset alarm
+      temperature = cmd[1].toFloat();
+  }
+  else
+  {
+      temperature = 100;
+  }
+  }
+  else if(cmd[0] == "cwip") //Set one color for whole strip
+  {
+  cmd[1].toCharArray(charArray, 8);
+  int color = toIntColor(charArray);
+  
+  for (int i = 0; i < STRIP_LEN; i++)
+  {
+      strip[i] = color;
+  }
+  
+  FastLED.show();
+  }
+  else if(cmd[0] == "shw")
+  {
+  FastLED.show();
+  }
+  else if(cmd[0] == "setd") //Set color of one diode
+  {
+  cmd[1].toCharArray(charArray, 8);
+  strip[cmd[2].toInt()] = toIntColor(charArray);
+  }
+  else if(cmd[0] == "term") //Set termostat
+  {
+  termostat = cmd[1].toFloat();
+  eepromPut();
+  }
+  else if(cmd[0] == "reset")
+  {
+  ESP.restart();
+  }
+  else if(cmd[0] == "anim")
+  {
+  anim = cmd[1].toInt();
+  }
+  else if(cmd[0] == "5") //5V power supply
+  {
+  if(cmd[1] == "1")
+  {
+      digitalWrite(SUPPLY_PIN, LOW);
+  }
+  else if(cmd[1] == "0")
+  {
+      digitalWrite(SUPPLY_PIN, HIGH);
+  }
+  }
+  else if(cmd[0] == "heat")
+  {
+  switch (cmd[1].toInt())
+  {
+      case 0: //Cold
+      heatMode = 0; terminal("valve;0"); break;
+      
+      case 1: //Heat
+      heatMode = 1; terminal("valve;1"); break;
+      
+      case 4: //Toggle
+      if(heatMode == 0)
+      {
+          terminal("heat;1");
+      }
+      else
+      {
+          terminal("heat;0");
+      }
+      break;
+  }
+  
+  eepromPut();
+  }
+  else if(cmd[0] == "valve")
+  {
+  bool pos = cmd[1].toInt();
+  if (pos && !valveS)
+  {
+      valveS = pos;
+      digitalWrite(VALVE_PIN , LOW);
+      client.publish("valve", "1");
+      terminal("sendBrodcast;glb;vlv;1");
+  }
+  else if (!pos && valveS)
+  {
+      valveS = pos;
+      digitalWrite(VALVE_PIN , HIGH);
+      client.publish("valve", "0");
+      terminal("sendBrodcast;glb;vlv;0");
+  }
+  }
+  else if (cmd[0] == "sendBrodcast") //address, command, A, B, C...
+  {
     String toSend = cmd[1] + ';' + cmd[2];//Address and command
 
     //Parameters
     for(int i = 3; i<MAXT_CMD; i++)
     {
-        if (cmd[i] != "")
-        {
+      if (cmd[i] != "")
+      {
         toSend += ';';
         toSend += cmd[i];
-        }
-        else
-        {
+      }
+      else
+      {
         break;
-        }
+      }
     }
-
-    char toSendA[MAXT_CMD];
-    toSend.toCharArray(toSendA, MAXT_CMD);
-    udp.broadcastTo(toSendA, UDP_PORT);
+    
+    byte toSendA[MAXT_CMD];
+    toSend.getBytes(toSendA, MAXT_CMD);
+      
+    if(cmd[1] == "glb")
+    {
+      udp.writeTo(toSendA, MAXT_CMD, CEN_ADR, UDP_PORT);
+      udp.writeTo(toSendA, MAXT_CMD, LOZ_ADR, UDP_PORT);
+      udp.writeTo(toSendA, MAXT_CMD, WEN_ADR, UDP_PORT);
     }
+    else if(cmd[1] == "cen") {
+      udp.writeTo(toSendA, MAXT_CMD, CEN_ADR, UDP_PORT);
+    }
+    else if(cmd[1] == "loz") {
+      udp.writeTo(toSendA, MAXT_CMD, LOZ_ADR, UDP_PORT);
+    }
+    else if(cmd[1] == "wen") {
+      udp.writeTo(toSendA, MAXT_CMD, WEN_ADR, UDP_PORT);
+    }
+  }
 }

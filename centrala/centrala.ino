@@ -981,9 +981,24 @@ void terminal(String command)
         break;
       }
     }
-
-    char toSendA[MAXT_CMD];
-    toSend.toCharArray(toSendA, MAXT_CMD);
-    udp.broadcastTo(toSendA, UDP_PORT);
+    
+    byte toSendA[MAXT_CMD];
+    toSend.getBytes(toSendA, MAXT_CMD);
+      
+    if(cmd[1] == "glb")
+    {
+      udp.writeTo(toSendA, MAXT_CMD, CEN_ADR, UDP_PORT);
+      udp.writeTo(toSendA, MAXT_CMD, LOZ_ADR, UDP_PORT);
+      udp.writeTo(toSendA, MAXT_CMD, WEN_ADR, UDP_PORT);
+    }
+    else if(cmd[1] == "cen") {
+      udp.writeTo(toSendA, MAXT_CMD, CEN_ADR, UDP_PORT);
+    }
+    else if(cmd[1] == "loz") {
+      udp.writeTo(toSendA, MAXT_CMD, LOZ_ADR, UDP_PORT);
+    }
+    else if(cmd[1] == "wen") {
+      udp.writeTo(toSendA, MAXT_CMD, WEN_ADR, UDP_PORT);
+    }
   }
 }

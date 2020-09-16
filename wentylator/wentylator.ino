@@ -267,26 +267,8 @@ void mqttCallback(char* topic, byte* payload, unsigned int length)
 
 void terminal(String command)
 {
-    String cmd[MAXT_ELEMENTS];
-    terminalSlice(command, cmd);
-
-  //Slice array into parameters
-  int parm = 0;
-  for (int i = 0; i < MAXT_CMD; i++)
-  {
-    if (cmdChar[i] == ';')
-    {
-      parm++;
-    }
-    else if (cmdChar[i] != 0)
-    {
-      cmd[parm] += cmdChar[i];
-    }
-    else
-    {
-      break;
-    }
-  }
+  String cmd[MAXT_ELEMENTS];
+  terminalSlice(command, cmd);
 
   if (cmd[0] == "fan")
   {
@@ -324,7 +306,7 @@ void terminal(String command)
     String toSend = cmd[1] + ';' + cmd[2];//Address and command
 
     //Parameters
-    for (int i = 3; i < MAXT_CMD; i++)
+    for(int i = 3; i<MAXT_CMD; i++)
     {
       if (cmd[i] != "")
       {
@@ -336,9 +318,24 @@ void terminal(String command)
         break;
       }
     }
-
-    char toSendA[MAXT_CMD];
-    toSend.toCharArray(toSendA, MAXT_CMD);
-    udp.broadcastTo(toSendA, UDP_PORT);
+    
+    byte toSendA[MAXT_CMD];
+    toSend.getBytes(toSendA, MAXT_CMD);
+      
+    if(cmd[1] == "glb")
+    {
+      udp.writeTo(toSendA, MAXT_CMD, CEN_ADR, UDP_PORT);
+      udp.writeTo(toSendA, MAXT_CMD, LOZ_ADR, UDP_PORT);
+      udp.writeTo(toSendA, MAXT_CMD, WEN_ADR, UDP_PORT);
+    }
+    else if(cmd[1] == "cen") {
+      udp.writeTo(toSendA, MAXT_CMD, CEN_ADR, UDP_PORT);
+    }
+    else if(cmd[1] == "loz") {
+      udp.writeTo(toSendA, MAXT_CMD, LOZ_ADR, UDP_PORT);
+    }
+    else if(cmd[1] == "wen") {
+      udp.writeTo(toSendA, MAXT_CMD, WEN_ADR, UDP_PORT);
+    }
   }
 }
