@@ -224,15 +224,13 @@ void loop()
 
   //Fan control //0(gear 0) 1-160(gear 1) 161-175(X) 176-335(gear 2) 336-350(X) 351-511(gear 3)
   if (buttons[2][2] &&
-      !buttons[0][1] && !buttons[1][1] && !buttons[3][1] && !buttons[4][1])
-  {
+      !buttons[0][1] && !buttons[1][1] && !buttons[3][1] && !buttons[4][1]) {
     terminal("sendBrodcast;wen;fan;-1");
   }
 
   //Heating control
   if (buttons[0][2] &&
-      !buttons[1][1] && !buttons[2][1] && !buttons[3][1] && !buttons[4][1])
-  {
+      !buttons[1][1] && !buttons[2][1] && !buttons[3][1] && !buttons[4][1]) {
     switch (potenPos)
     {
       case 0:
