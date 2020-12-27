@@ -61,13 +61,13 @@ void setup()
 
   pinMode(VALVE_PIN, OUTPUT);
   pinMode(SUPPLY_PIN, OUTPUT);
-  
+
   digitalWrite(VALVE_PIN, HIGH);
   digitalWrite(SUPPLY_PIN, HIGH);
 
   terminal("heat;" + String(heatMode));
-  
-  FastLED.addLeds<WS2812B, STRIP_PIN, GRB>(strip, STRIP_LEN).setCorrection(CRGB(255,255,255));
+
+  FastLED.addLeds<WS2812B, STRIP_PIN, GRB>(strip, STRIP_LEN).setCorrection(CRGB(255, 255, 255));
   FastLED.setBrightness(255);
 
   //MQTT
@@ -78,6 +78,14 @@ void setup()
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
 
+  String host_name_String = "node_" + String(ADDRESS);
+  if(host_name_String.length() < 15)
+  {
+    char host_name[15];
+    host_name_String.toCharArray(host_name, 15);
+    WiFi.setHostname(host_name);
+  }
+  
   ArduinoOTA
   .onStart([]()
   {
@@ -114,7 +122,7 @@ void setup()
       for (int i = 0; i < packet.length(); i++)
       {
         adr += (char)packet.data()[i];
-        if((char)packet.data()[i+1] == ';')
+        if ((char)packet.data()[i + 1] == ';')
         {
           break;
         }
@@ -132,7 +140,7 @@ void setup()
       }
     });
   }
-  
+
   ArduinoOTA.begin();
 }
 
@@ -156,18 +164,18 @@ void loop()
 
 void conErrorHandle()
 {
-  if(WiFi.status() == WL_CONNECTED)
+  if (WiFi.status() == WL_CONNECTED)
   {
     ArduinoOTA.handle();
-    
-    if(!client.loop()) //No connection with mqtt server
-    {
-      if (millis() >= mqttReconAlarm)
-      {
-        mqttReconAlarm = millis() + MQTT_RECON_FREQ;
-        mqttReconnect();
-      }
-    }
+
+//    if (!client.loop()) //No connection with mqtt server
+//    {
+//      if (millis() >= mqttReconAlarm)
+//      {
+//        mqttReconAlarm = millis() + MQTT_RECON_FREQ;
+//        mqttReconnect();
+//      }
+//    }
   }
   else //No connection with wifi router
   {
@@ -191,7 +199,7 @@ void mqttReconnect()
   if (client.connect(clientId.c_str(), MQTT_USER, MQTT_PASSWORD))
   {
     //Subscribe list
-    client.subscribe("#"); 
+    client.subscribe("#");
   }
 }
 
@@ -200,12 +208,12 @@ void colorWipe(uint32_t color, int wait, int first, int last)
 {
   for (int i = first; i < last; i++)
   {
-    if(i<101)
+    if (i < 101)
     {
       strip[i] = color;
     }
     FastLED.show();
-    
+
     delay(wait);
   }
 }
@@ -246,7 +254,7 @@ void Fire2012()
       CRGB color = HeatColor(heat[j]);
       strip[j] = color;
     }
-    
+
     FastLED.show();
   }
 }
@@ -256,7 +264,7 @@ void rainbow()
   if (anim == 1)
   {
     fill_rainbow(strip, 101, gHue, 7);
-    FastLED.show();    
+    FastLED.show();
   }
 }
 
@@ -267,7 +275,7 @@ void confetti()
     fadeToBlackBy( strip, 101, 10);
     int pos = random16(101);
     strip[pos] += CHSV( gHue + random8(64), 200, 255);
-    
+
     FastLED.show();
   }
 }
@@ -348,11 +356,11 @@ void mqttCallback(char* topic, byte* payload, unsigned int length)
   {
     payloadS += (char)payload[i];
   }
-      
+
   if (String(topic) == "terminal") //Terminal input, payload is a command
   {
     String adr = String(payloadS).substring(0, String(payloadS).indexOf(';'));
-    if(adr == ADDRESS || adr == "glb")
+    if (adr == ADDRESS || adr == "glb")
     {
       terminal(String(payloadS).substring(String(payloadS).indexOf(';') + 1));
     }
@@ -360,7 +368,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length)
   else //Standard input, topic is a command, payload is a variable
   {
     String adr = String(topic).substring(0, String(topic).indexOf(';'));
-    if(adr == ADDRESS || adr == "glb")
+    if (adr == ADDRESS || adr == "glb")
     {
       terminal(String(topic).substring(String(topic).indexOf(';') + 1) + ";" + payloadS);
     }
@@ -371,112 +379,112 @@ void terminal(String command)
 {
   String cmd[MAXT_ELEMENTS];
   terminalSlice(command, cmd);
-  
-  if(cmd[0] == "air") //Temperature, humidity, pressure
+
+  if (cmd[0] == "air") //Temperature, humidity, pressure
   {
-  if (cmd[1].toFloat() > 0 && cmd[1].toFloat() < 40) //Validate
-  {
+    if (cmd[1].toFloat() > 0 && cmd[1].toFloat() < 40) //Validate
+    {
       tempReceivedAlarm = millis() + TEMP_RECEIVED_FREQ; //Update temperature reset alarm
       temperature = cmd[1].toFloat();
-  }
-  else
-  {
+    }
+    else
+    {
       temperature = 100;
+    }
   }
-  }
-  else if(cmd[0] == "cwip") //Set one color for whole strip
+  else if (cmd[0] == "cwip") //Set one color for whole strip
   {
-  cmd[1].toCharArray(charArray, 8);
-  int color = toIntColor(charArray);
-  
-  for (int i = 0; i < STRIP_LEN; i++)
-  {
+    cmd[1].toCharArray(charArray, 8);
+    int color = toIntColor(charArray);
+
+    for (int i = 0; i < STRIP_LEN; i++)
+    {
       strip[i] = color;
+    }
+
+    FastLED.show();
   }
-  
-  FastLED.show();
+  else if (cmd[0] == "shw")
+  {
+    FastLED.show();
   }
-  else if(cmd[0] == "shw")
+  else if (cmd[0] == "setd") //Set color of one diode
   {
-  FastLED.show();
+    cmd[1].toCharArray(charArray, 8);
+    strip[cmd[2].toInt()] = toIntColor(charArray);
   }
-  else if(cmd[0] == "setd") //Set color of one diode
+  else if (cmd[0] == "term") //Set termostat
   {
-  cmd[1].toCharArray(charArray, 8);
-  strip[cmd[2].toInt()] = toIntColor(charArray);
+    termostat = cmd[1].toFloat();
+    eepromPut();
   }
-  else if(cmd[0] == "term") //Set termostat
+  else if (cmd[0] == "reset")
   {
-  termostat = cmd[1].toFloat();
-  eepromPut();
+    ESP.restart();
   }
-  else if(cmd[0] == "reset")
+  else if (cmd[0] == "anim")
   {
-  ESP.restart();
+    anim = cmd[1].toInt();
   }
-  else if(cmd[0] == "anim")
+  else if (cmd[0] == "5") //5V power supply
   {
-  anim = cmd[1].toInt();
-  }
-  else if(cmd[0] == "5") //5V power supply
-  {
-  if(cmd[1] == "1")
-  {
+    if (cmd[1] == "1")
+    {
       digitalWrite(SUPPLY_PIN, LOW);
-  }
-  else if(cmd[1] == "0")
-  {
+    }
+    else if (cmd[1] == "0")
+    {
       digitalWrite(SUPPLY_PIN, HIGH);
+    }
   }
-  }
-  else if(cmd[0] == "heat")
+  else if (cmd[0] == "heat")
   {
-  switch (cmd[1].toInt())
-  {
+    switch (cmd[1].toInt())
+    {
       case 0: //Cold
-      heatMode = 0; terminal("valve;0"); break;
-      
+        heatMode = 0; terminal("valve;0"); break;
+
       case 1: //Heat
-      heatMode = 1; terminal("valve;1"); break;
-      
+        heatMode = 1; terminal("valve;1"); break;
+
       case 4: //Toggle
-      if(heatMode == 0)
-      {
+        if (heatMode == 0)
+        {
           terminal("heat;1");
-      }
-      else
-      {
+        }
+        else
+        {
           terminal("heat;0");
-      }
-      break;
+        }
+        break;
+    }
+
+    eepromPut();
   }
-  
-  eepromPut();
-  }
-  else if(cmd[0] == "valve")
+  else if (cmd[0] == "valve")
   {
-  bool pos = cmd[1].toInt();
-  if (pos && !valveS)
-  {
+    bool pos = cmd[1].toInt();
+    if (pos && !valveS)
+    {
       valveS = pos;
       digitalWrite(VALVE_PIN , LOW);
       client.publish("valve", "1");
       terminal("sendBrodcast;glb;vlv;1");
-  }
-  else if (!pos && valveS)
-  {
+    }
+    else if (!pos && valveS)
+    {
       valveS = pos;
       digitalWrite(VALVE_PIN , HIGH);
       client.publish("valve", "0");
       terminal("sendBrodcast;glb;vlv;0");
-  }
+    }
   }
   else if (cmd[0] == "sendBrodcast") //address, command, A, B, C...
   {
     String toSend = cmd[1] + ';' + cmd[2];//Address and command
 
     //Parameters
-    for(int i = 3; i<MAXT_CMD; i++)
+    for (int i = 3; i < MAXT_CMD; i++)
     {
       if (cmd[i] != "")
       {
@@ -488,23 +496,23 @@ void terminal(String command)
         break;
       }
     }
-    
+
     byte toSendA[MAXT_CMD];
     toSend.getBytes(toSendA, MAXT_CMD);
-      
-    if(cmd[1] == "glb")
+
+    if (cmd[1] == "glb")
     {
       udp.writeTo(toSendA, MAXT_CMD, CEN_ADR, UDP_PORT);
       udp.writeTo(toSendA, MAXT_CMD, LOZ_ADR, UDP_PORT);
       udp.writeTo(toSendA, MAXT_CMD, WEN_ADR, UDP_PORT);
     }
-    else if(cmd[1] == "cen") {
+    else if (cmd[1] == "cen") {
       udp.writeTo(toSendA, MAXT_CMD, CEN_ADR, UDP_PORT);
     }
-    else if(cmd[1] == "loz") {
+    else if (cmd[1] == "loz") {
       udp.writeTo(toSendA, MAXT_CMD, LOZ_ADR, UDP_PORT);
     }
-    else if(cmd[1] == "wen") {
+    else if (cmd[1] == "wen") {
       udp.writeTo(toSendA, MAXT_CMD, WEN_ADR, UDP_PORT);
     }
   }

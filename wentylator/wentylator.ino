@@ -54,6 +54,14 @@ void setup()
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
 
+  String host_name_String = "node_" + String(ADDRESS);
+  if(host_name_String.length() < 15)
+  {
+    char host_name[15];
+    host_name_String.toCharArray(host_name, 15);
+    WiFi.setHostname(host_name);
+  }
+  
   ArduinoOTA
   .onStart([]()
   {
@@ -129,14 +137,14 @@ void conErrorHandle()
     ArduinoOTA.handle();
 
     
-    if (!client.loop()) //No connection with mqtt server
-    {
-      if (millis() >= mqttReconAlarm)
-      {
-        mqttReconAlarm = millis() + MQTT_RECON_FREQ;
-        mqttReconnect();
-      }
-    }
+//    if (!client.loop()) //No connection with mqtt server
+//    {
+//      if (millis() >= mqttReconAlarm)
+//      {
+//        mqttReconAlarm = millis() + MQTT_RECON_FREQ;
+//        mqttReconnect();
+//      }
+//    }
     
   }
   else //No connection with wifi router
