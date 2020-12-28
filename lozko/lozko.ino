@@ -11,6 +11,11 @@
 #define TEMP_RECEIVED_FREQ 20000
 #define HEATUP_FREQ 180000
 
+//Delayed command execution
+long DCETimers[MAX_DCE_TIMERS][2]; //When, distance
+int DCELoop[MAX_DCE_TIMERS]; //-1 == retain, >0 == loop
+String DCECommand[MAX_DCE_TIMERS]; //Command
+
 //-------------------------------------------------------------------------------- Libraries
 //Wifi
 #include <WiFi.h>
@@ -46,6 +51,7 @@ int bedColor;
 byte anim;
 bool b5;
 int heatMode; //Cold(0), Heat(1), Auto(2), Heat up(3)
+float temperature_alter;
 float temperature;
 float termostat;
 bool valveS;
@@ -79,13 +85,13 @@ void setup()
   WiFi.begin(ssid, password);
 
   String host_name_String = "node_" + String(ADDRESS);
-  if(host_name_String.length() < 15)
+  if (host_name_String.length() < 15)
   {
     char host_name[15];
     host_name_String.toCharArray(host_name, 15);
     WiFi.setHostname(host_name);
   }
-  
+
   ArduinoOTA
   .onStart([]()
   {
@@ -141,6 +147,8 @@ void setup()
     });
   }
 
+  DCEAdd(TEMP_RECEIVED_FREQ, "sendUDP;cen;upair;loz", -1);
+
   ArduinoOTA.begin();
 }
 
@@ -156,10 +164,24 @@ void loop()
   bpm();
 
   delay(1000 / FRAMES_PER_SECOND);
-  EVERY_N_MILLISECONDS(20)
-  {
+  EVERY_N_MILLISECONDS(20) {
     gHue++;
   }
+
+  if (heatMode == 2) {
+    if (temperature_alter >= termostat) {
+      terminal("valve;0");
+    }
+    else {
+      terminal("valve;1");
+    }
+
+    if (millis() + 5000 > tempReceivedAlarm) {
+      terminal("heat;0");
+    }
+  }
+  
+  
 }
 
 void conErrorHandle()
@@ -168,14 +190,14 @@ void conErrorHandle()
   {
     ArduinoOTA.handle();
 
-//    if (!client.loop()) //No connection with mqtt server
-//    {
-//      if (millis() >= mqttReconAlarm)
-//      {
-//        mqttReconAlarm = millis() + MQTT_RECON_FREQ;
-//        mqttReconnect();
-//      }
-//    }
+    //    if (!client.loop()) //No connection with mqtt server
+    //    {
+    //      if (millis() >= mqttReconAlarm)
+    //      {
+    //        mqttReconAlarm = millis() + MQTT_RECON_FREQ;
+    //        mqttReconnect();
+    //      }
+    //    }
   }
   else //No connection with wifi router
   {
@@ -201,6 +223,79 @@ void mqttReconnect()
     //Subscribe list
     client.subscribe("#");
   }
+}
+
+
+void DCEHandle()
+{
+  for (int i = 0; i < MAX_DCE_TIMERS; i++)
+  {
+    if (millis() >= DCETimers[i][0] && DCELoop[i] != 0)
+    {
+      //Execute command
+      terminal(DCECommand[i]);
+
+      if (DCELoop[i] == -1) // Infinite, extend
+      {
+        DCETimers[i][0] = millis() + DCETimers[i][1];
+      }
+      else if (DCELoop[i] > 1) //X times, extend, decrease
+      {
+        DCETimers[i][0] = millis() + DCETimers[i][1];
+        DCELoop[i] -= 1;
+      }
+      else if (DCELoop[i] == 1) //Close DCE, its last iteration
+      {
+        DCELoop[i] = 0;
+      }
+    }
+  }
+}
+
+void DCEAdd(long timer, String command, int loops)
+{
+  for (int i = 0; i < MAX_DCE_TIMERS; i++)
+  {
+    if (DCELoop[i] == 0) //Look for first empty
+    {
+      //Command
+      DCETimers[i][0] = timer + millis();
+      DCETimers[i][1] = timer;
+      DCELoop[i] = loops;
+      DCECommand[i] = command;
+
+      return;
+    }
+  }
+}
+
+bool DCEEdit(long timer, String command, int loops)
+{
+  bool edited = 0;
+
+  for (int i = 0; i < MAX_DCE_TIMERS; i++)
+  {
+    if (DCECommand[i] == command || DCELoop[i] != 0) //Look for desired command and edit
+    {
+      edited = 1;
+
+      //Command
+      if (timer > 0)
+      {
+        DCETimers[i][0] = timer + millis();
+        DCETimers[i][1] = timer;
+      }
+      else if (timer == 0)
+      {
+        DCETimers[i][0] = 0;
+      }
+
+      DCECommand[i] = command;
+      DCELoop[i] = loops;
+    }
+  }
+
+  return edited;
 }
 
 //-------------------------------------------------------------------------------- Strip functions
@@ -382,14 +477,27 @@ void terminal(String command)
 
   if (cmd[0] == "air") //Temperature, humidity, pressure
   {
-    if (cmd[1].toFloat() > 0 && cmd[1].toFloat() < 40) //Validate
+    if (cmd[1].toFloat() > 0 && cmd[1].toFloat() < 35) //Validate
     {
       tempReceivedAlarm = millis() + TEMP_RECEIVED_FREQ; //Update temperature reset alarm
       temperature = cmd[1].toFloat();
+
+      //Alter temperature graph
+      float diff = temperature - temperature_alter;
+
+      float inc;
+      if (diff > 0) {
+        inc = diff * 3;
+      }
+      else {
+        inc = diff * 3 / 50;
+      }
+
+      temperature_alter += inc;
     }
     else
     {
-      temperature = 100;
+      terminal("heat;0");
     }
   }
   else if (cmd[0] == "cwip") //Set one color for whole strip
@@ -447,6 +555,9 @@ void terminal(String command)
       case 1: //Heat
         heatMode = 1; terminal("valve;1"); break;
 
+      case 2: //Auto
+        heatMode = 2; terminal("valve;0"); break;
+
       case 4: //Toggle
         if (heatMode == 0)
         {
@@ -469,19 +580,19 @@ void terminal(String command)
       valveS = pos;
       digitalWrite(VALVE_PIN , LOW);
       client.publish("valve", "1");
-      terminal("sendBrodcast;glb;vlv;1");
+      terminal("sendUDP;glb;vlv;1");
     }
     else if (!pos && valveS)
     {
       valveS = pos;
       digitalWrite(VALVE_PIN , HIGH);
       client.publish("valve", "0");
-      terminal("sendBrodcast;glb;vlv;0");
+      terminal("sendUDP;glb;vlv;0");
     }
   }
-  else if (cmd[0] == "sendBrodcast") //address, command, A, B, C...
+  else if (cmd[0] == "sendUDP") //address, command, A, B, C...
   {
-    String toSend = cmd[1] + ';' + cmd[2];//Address and command
+    String toSend = cmd[1] + ';' + cmd[2]; //Address and command
 
     //Parameters
     for (int i = 3; i < MAXT_CMD; i++)
@@ -493,27 +604,35 @@ void terminal(String command)
       }
       else
       {
+        toSend += ";|";
         break;
       }
     }
 
-    byte toSendA[MAXT_CMD];
-    toSend.getBytes(toSendA, MAXT_CMD);
-
-    if (cmd[1] == "glb")
+    byte len = toSend.length();
+    if (len < MAXT_CMD)
     {
-      udp.writeTo(toSendA, MAXT_CMD, CEN_ADR, UDP_PORT);
-      udp.writeTo(toSendA, MAXT_CMD, LOZ_ADR, UDP_PORT);
-      udp.writeTo(toSendA, MAXT_CMD, WEN_ADR, UDP_PORT);
-    }
-    else if (cmd[1] == "cen") {
-      udp.writeTo(toSendA, MAXT_CMD, CEN_ADR, UDP_PORT);
-    }
-    else if (cmd[1] == "loz") {
-      udp.writeTo(toSendA, MAXT_CMD, LOZ_ADR, UDP_PORT);
-    }
-    else if (cmd[1] == "wen") {
-      udp.writeTo(toSendA, MAXT_CMD, WEN_ADR, UDP_PORT);
+      byte toSendA[len + 2];
+      toSend.getBytes(toSendA, len + 2);
+
+      if (cmd[1] == "glb")
+      {
+        udp.writeTo(toSendA, len, CEN_ADR, UDP_PORT);
+        udp.writeTo(toSendA, len, LOZ_ADR, UDP_PORT);
+        udp.writeTo(toSendA, len, WEN_ADR, UDP_PORT);
+      }
+      else if (cmd[1] == "cen") {
+        udp.writeTo(toSendA, len, CEN_ADR, UDP_PORT);
+      }
+      else if (cmd[1] == "loz") {
+        udp.writeTo(toSendA, len, LOZ_ADR, UDP_PORT);
+      }
+      else if (cmd[1] == "wen") {
+        udp.writeTo(toSendA, len, WEN_ADR, UDP_PORT);
+      }
+      else if (cmd[1] == "com") {
+        udp.writeTo(toSendA, len, COM_ADR, UDP_PORT);
+      }
     }
   }
 }
