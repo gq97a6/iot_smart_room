@@ -51,7 +51,7 @@ int bedColor;
 byte anim;
 bool b5;
 int heatMode; //Cold(0), Heat(1), Auto(2), Heat up(3)
-float temperature_alter = 100;
+float temperature_jump;
 float temperature;
 float termostat;
 bool valveS;
@@ -169,14 +169,17 @@ void loop()
   }
 
   if (heatMode == 2) {
-    float diff_abs = abs(temperature - termostat);
-    float faktor = diff_abs * 10 / 12;
-    
-    if (temperature > termostat - faktor) { //Too hot
+    float factor = temperature_jump * 0.6;
+
+    if (temperature > termostat - factor) { //Too hot
       terminal("valve;0");
     }
-    else if(temperature < termostat - faktor) { //Too cold
-      terminal("valve;1");
+    else if(temperature < termostat) { //Too cold
+      if (!valveS) //Only on beginning of heating
+      {
+        terminal("valve;1");
+        temperature_jump = temperature - termostat;
+      }
     }
 
     if (millis() > tempReceivedAlarm + 5000) {
@@ -482,25 +485,6 @@ void terminal(String command)
     {
       tempReceivedAlarm = millis() + TEMP_RECEIVED_FREQ; //Update temperature reset alarm
       temperature = cmd[1].toFloat();
-
-//      //Alter temperature graph
-//      if(temperature_alter == 100) { //On boot
-//        temperature_alter = temperature;
-//      }
-//      else //All other
-//      {
-//          float diff = temperature - temperature_alter;
-//    
-//          float inc;
-//          if (diff > 0) {
-//            inc = diff * 3;
-//          }
-//          else {
-//            inc = diff * 3 / 50;
-//          }
-//    
-//          temperature_alter += inc;
-//      }
     }
     else
     {
@@ -641,9 +625,5 @@ void terminal(String command)
         udp.writeTo(toSendA, len, COM_ADR, UDP_PORT);
       }
     }
-  }
-  else if (cmd[0] == "altertemp")
-  {
-    terminal("sendUDP;" + cmd[1] + ";" + String(temperature_alter));
   }
 }
