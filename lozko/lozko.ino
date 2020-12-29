@@ -53,7 +53,7 @@ bool b5;
 int heatMode; //Cold(0), Heat(1), Auto(2), Heat up(3)
 float temperature_jump;
 float temperature;
-float termostat;
+float thermostat;
 bool valveS;
 long tempReceivedAlarm;
 long heatUpAlarm;
@@ -171,14 +171,18 @@ void loop()
   if (heatMode == 2) {
     float factor = temperature_jump * 0.6;
 
-    if (temperature > termostat - factor) { //Too hot
+    if (temperature >= thermostat) //Too hot, for sure
+    { 
       terminal("valve;0");
     }
-    else if(temperature < termostat) { //Too cold
+    else if (temperature >= thermostat - factor) { //Too hot
+      terminal("valve;0");
+    }
+    else if(temperature < thermostat && thermostat - temperature > 0.3){ //Too cold
       if (!valveS) //Only on beginning of heating
       {
         terminal("valve;1");
-        temperature_jump = temperature - termostat;
+        temperature_jump = temperature - thermostat;
       }
     }
 
@@ -435,7 +439,7 @@ void eepromPut()
   preferences.putDouble("hUpAlr", heatUpAlarm);
   preferences.putUInt("bedClr", bedColor);
   preferences.putUInt("htMd", heatMode);
-  preferences.putFloat("termst", termostat);
+  preferences.putFloat("termst", thermostat);
 }
 
 void eepromGet()
@@ -443,7 +447,7 @@ void eepromGet()
   heatUpAlarm = preferences.getDouble("hUpAlr", 0);
   bedColor = preferences.getUInt("bedClr", 255);
   heatMode = preferences.getUInt("htMd", 0);
-  termostat = preferences.getFloat("termst", 0);
+  thermostat = preferences.getFloat("termst", 0);
 }
 
 //-------------------------------------------------------------------------------- Callbacks
@@ -512,9 +516,10 @@ void terminal(String command)
     cmd[1].toCharArray(charArray, 8);
     strip[cmd[2].toInt()] = toIntColor(charArray);
   }
-  else if (cmd[0] == "term") //Set termostat
+  else if (cmd[0] == "term") //Set thermostat
   {
-    termostat = cmd[1].toFloat();
+    thermostat = cmd[1].toFloat();
+    terminal("valve;0"); //Update thermostat
     eepromPut();
   }
   else if (cmd[0] == "reset")
