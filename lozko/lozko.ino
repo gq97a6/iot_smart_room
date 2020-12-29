@@ -170,10 +170,10 @@ void loop()
 
   if (heatMode == 2) {
     float diff_abs = abs(temperature - termostat);
-    float faktor = diff_abs/(12/10);
+    float faktor = diff_abs * 10 / 12;
     
     if (temperature > termostat - faktor) { //Too hot
-      terminal("valve;0*");
+      terminal("valve;0");
     }
     else if(temperature < termostat - faktor) { //Too cold
       terminal("valve;1");
