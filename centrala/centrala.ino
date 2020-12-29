@@ -199,7 +199,7 @@ void setup()
   ArduinoOTA.begin();
   bme.begin();
 
-  //DCEAdd(UPDATE_FREQ, "upair;com", -1);
+  DCEAdd(UPDATE_FREQ, "upair;com", -1);
 
   //Turn of after reset
   terminal("bout;7;#000000");

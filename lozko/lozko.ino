@@ -8,7 +8,7 @@
 #define SUPPLY_PIN 27
 #define VALVE_PIN 14
 
-#define TEMP_RECEIVED_FREQ 20000
+#define TEMP_RECEIVED_FREQ 5000
 #define HEATUP_FREQ 180000
 
 //Delayed command execution
@@ -51,7 +51,7 @@ int bedColor;
 byte anim;
 bool b5;
 int heatMode; //Cold(0), Heat(1), Auto(2), Heat up(3)
-float temperature_alter;
+float temperature_alter = 100;
 float temperature;
 float termostat;
 bool valveS;
@@ -146,16 +146,16 @@ void setup()
       }
     });
   }
-
+  
   DCEAdd(TEMP_RECEIVED_FREQ, "sendUDP;cen;upair;loz", -1);
-
   ArduinoOTA.begin();
 }
 
 void loop()
 {
   conErrorHandle();
-
+  DCEHandle();
+  
   //Led strip
   Fire2012();
   rainbow();
@@ -169,19 +169,20 @@ void loop()
   }
 
   if (heatMode == 2) {
-    if (temperature_alter >= termostat) {
-      terminal("valve;0");
+    float diff_abs = abs(temperature - termostat);
+    float faktor = diff_abs/(12/10);
+    
+    if (temperature > termostat - faktor) { //Too hot
+      terminal("valve;0*");
     }
-    else {
+    else if(temperature < termostat - faktor) { //Too cold
       terminal("valve;1");
     }
 
-    if (millis() + 5000 > tempReceivedAlarm) {
+    if (millis() > tempReceivedAlarm + 5000) {
       terminal("heat;0");
     }
   }
-  
-  
 }
 
 void conErrorHandle()
@@ -482,18 +483,24 @@ void terminal(String command)
       tempReceivedAlarm = millis() + TEMP_RECEIVED_FREQ; //Update temperature reset alarm
       temperature = cmd[1].toFloat();
 
-      //Alter temperature graph
-      float diff = temperature - temperature_alter;
-
-      float inc;
-      if (diff > 0) {
-        inc = diff * 3;
-      }
-      else {
-        inc = diff * 3 / 50;
-      }
-
-      temperature_alter += inc;
+//      //Alter temperature graph
+//      if(temperature_alter == 100) { //On boot
+//        temperature_alter = temperature;
+//      }
+//      else //All other
+//      {
+//          float diff = temperature - temperature_alter;
+//    
+//          float inc;
+//          if (diff > 0) {
+//            inc = diff * 3;
+//          }
+//          else {
+//            inc = diff * 3 / 50;
+//          }
+//    
+//          temperature_alter += inc;
+//      }
     }
     else
     {
@@ -634,5 +641,9 @@ void terminal(String command)
         udp.writeTo(toSendA, len, COM_ADR, UDP_PORT);
       }
     }
+  }
+  else if (cmd[0] == "altertemp")
+  {
+    terminal("sendUDP;" + cmd[1] + ";" + String(temperature_alter));
   }
 }
