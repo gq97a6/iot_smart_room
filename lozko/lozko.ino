@@ -169,7 +169,7 @@ void loop()
   }
 
   if (heatMode == 2) {
-    float factor = temperature_jump * 0.6;
+    float factor = temperature_jump * 0.75;
 
     if (temperature >= thermostat) //Too hot, for sure
     { 
@@ -178,7 +178,7 @@ void loop()
     else if (temperature >= thermostat - factor) { //Too hot
       terminal("valve;0");
     }
-    else if(temperature < thermostat && thermostat - temperature > 0.3){ //Too cold
+    else if(temperature < thermostat && thermostat - temperature > 0.2){ //Too cold
       if (!valveS) //Only on beginning of heating
       {
         terminal("valve;1");
